@@ -93,6 +93,14 @@ void Presentation::message(const std::string& value,bool reward) {
 void Presentation::ingest(const std::vector<Event>& events) {
     for(const auto& e:events) {
         if(!e.text.empty()) message(e.text,e.kind==EventKind::Reward);
+        if(e.kind==EventKind::Skid) {
+            Vec2 forward=direction(e.value),side{-forward.y,forward.x};
+            for(float offset:{-10.0f,10.0f}) {
+                if(skids_.size()>=1200) skids_.pop_front();
+                Vec2 at=e.position-forward*12+side*offset;
+                skids_.push_back({at-forward*6,at,10});
+            }
+        }
         int count=e.kind==EventKind::Explosion?65:e.kind==EventKind::Impact?10:e.kind==EventKind::Shot?4:e.kind==EventKind::Reward?35:0;
         for(int i=0;i<count && particles_.size()<1600;++i) {
             float life=rng_.range(0.15f,e.kind==EventKind::Explosion?1.5f:0.55f);
@@ -414,6 +422,8 @@ void Presentation::render(const Simulation& sim,const ViewState& view,float dt) 
     resize();dt=std::clamp(dt,0.0f,0.1f);clock_+=dt;
     for(auto& p:particles_) {p.life-=dt;p.position+=p.velocity*dt;p.velocity*=std::exp(-3*dt);}
     std::erase_if(particles_,[](const Particle& p){return p.life<=0;});
+    for(auto& mark:skids_) mark.life-=dt;
+    std::erase_if(skids_,[](const SkidMark& mark){return mark.life<=0;});
     for(auto& t:toasts_) t.life-=dt;
     std::erase_if(toasts_,[](const Toast& t){return t.life<=0;});
     float w=static_cast<float>(GetScreenWidth()),h=static_cast<float>(GetScreenHeight());
@@ -431,7 +441,9 @@ void Presentation::render(const Simulation& sim,const ViewState& view,float dt) 
     if(view.effects) {float shake=sim.trauma*sim.trauma*9;camera_.offset.x+=std::sin(clock_*63)*shake;camera_.offset.y+=std::cos(clock_*71)*shake;}
     Rect visible{camera_.target.x-w/(2*zoom_)-100,camera_.target.y-h/(2*zoom_)-100,w/zoom_+200,h/zoom_+200};
     BeginTextureMode(scene_);ClearBackground(ink);BeginMode2D(camera_);
-    drawCity(sim,visible);drawActors(sim,visible);EndMode2D();
+    drawCity(sim,visible);
+    for(const auto& mark:skids_) line(mark.a,mark.b,3,alpha(ink,std::min(0.65f,mark.life/5)));
+    drawActors(sim,visible);EndMode2D();
     if(view.rain) {
         for(int i=0;i<130;++i) {
             float x=std::fmod(static_cast<float>(i*137)+clock_*85,w+40)-20;

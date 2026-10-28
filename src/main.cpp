@@ -7,7 +7,8 @@
 
 namespace {
 struct Options {
-    std::uint64_t seed{2025};int frames{240};bool smoke{},noAudio{},noSave{},seedSet{},help{};
+    std::uint64_t seed{2025};int frames{240};bool smoke{},smokeAudio{},noAudio{},noSave{},seedSet{},help{};
+    std::string smokeView{"gameplay"};
     std::filesystem::path screenshot{"neon-smoke.png"},savePath=neon::defaultSavePath();
 };
 template<class T> bool number(std::string_view text,T& value) {
@@ -18,6 +19,11 @@ bool parse(int argc,char** argv,Options& o) {
         std::string_view arg=argv[i];
         auto next=[&]()->std::string_view{if(i+1<argc)return argv[++i];return {};};
         if(arg=="--smoke") o.smoke=true;
+        else if(arg=="--smoke-audio") {o.smoke=true;o.smokeAudio=true;}
+        else if(arg=="--smoke-view") {
+            auto v=next();if(v!="gameplay" && v!="title" && v!="map" && v!="garage") return false;
+            o.smoke=true;o.smokeView=v;
+        }
         else if(arg=="--no-audio") o.noAudio=true;
         else if(arg=="--no-save") o.noSave=true;
         else if(arg=="--help" || arg=="-h") o.help=true;
@@ -27,7 +33,7 @@ bool parse(int argc,char** argv,Options& o) {
         else if(arg=="--save-dir") {auto v=next();if(v.empty())return false;o.savePath=std::filesystem::path(v)/"progress.sav";}
         else {std::cerr<<"Unknown argument: "<<arg<<'\n';return false;}
     }
-    if(o.smoke) {o.noSave=true;o.noAudio=true;}
+    if(o.smoke) {o.noSave=true;if(!o.smokeAudio) o.noAudio=true;}
     return true;
 }
 bool clicked(float x,float y,float w,float h) {return IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(),{x,y,w,h});}
@@ -37,7 +43,8 @@ int main(int argc,char** argv) {
     if(!parse(argc,argv,options)) {std::cerr<<"Invalid arguments. Run --help.\n";return 2;}
     if(options.help) {
         std::cout<<"Neon Borough\n--seed N --no-audio --no-save --save-dir PATH\n"
-                    "--smoke --frames N --screenshot PATH (CI-only scripted renderer smoke test)\n";return 0;
+                    "--smoke --frames N --screenshot PATH (CI-only scripted renderer smoke test)\n"
+                    "--smoke-view gameplay|title|map|garage --smoke-audio (CI evidence modes)\n";return 0;
     }
     std::optional<neon::Progress> saved;std::string loadError;
     if(!options.noSave) {
@@ -59,6 +66,10 @@ int main(int argc,char** argv) {
         neon::Presentation presentation;
         std::unique_ptr<neon::Audio> audio;
         if(!options.noAudio) audio=std::make_unique<neon::Audio>();
+        if(options.smokeAudio) {
+            if(audio && audio->ready()) std::cout<<"AUDIO_READY\n";
+            else {std::cerr<<"Audio device initialization failed.\n";result=5;}
+        }
         neon::ViewState view;view.audio=!options.noAudio;
         neon::Screen previous=neon::Screen::Title;
         bool quit=false;float accumulator=0;int frame=0,lastRevision=sim->saveRevision;
@@ -70,6 +81,11 @@ int main(int argc,char** argv) {
             sim->player.position={580,100};
             int id=sim->spawnVehicle({580,100},neon::VehicleKind::Sport,0);
             sim->player.vehicle=id;sim->vehicle(id)->heading=0;sim->startMission(0);
+            if(options.smokeView=="title") view.screen=neon::Screen::Title;
+            if(options.smokeView=="map") view.map=true;
+            if(options.smokeView=="garage") {
+                sim->vehicle(id)->position=sim->city.services[7].position+neon::Vec2{0,-30};sim->garageOpen=true;
+            }
         }
         auto save=[&] {
             if(options.noSave) return;
@@ -110,6 +126,7 @@ int main(int argc,char** argv) {
                 if(options.smoke) {
                     pending={};pending.throttle=frame<150?0.8f:0.25f;pending.steering=frame>160?0.2f:0;
                     pending.aim=sim->playerPosition()+neon::Vec2{200,-30};pending.shoot=frame==80 || frame==100;
+                    if(options.smokeView=="garage") pending={};
                 }
                 accumulator+=dt;
                 for(int steps=0;accumulator>=neon::fixedStep && steps<6;++steps) {
@@ -126,9 +143,11 @@ int main(int argc,char** argv) {
             if(options.smoke && frame>=options.frames) {
                 auto parent=options.screenshot.parent_path();std::error_code ec;
                 if(!parent.empty()) std::filesystem::create_directories(parent,ec);
-                TakeScreenshot(options.screenshot.string().c_str());
+                Image capture=LoadImageFromScreen();
+                bool exported=ExportImage(capture,options.screenshot.string().c_str());
+                UnloadImage(capture);
                 std::cout<<"SMOKE frames="<<frame<<" digest="<<sim->digest()<<" vehicles="<<sim->vehicles.size()<<" screenshot="<<options.screenshot.string()<<'\n';
-                if(!std::filesystem::exists(options.screenshot) || !std::isfinite(sim->playerPosition().x) || !std::isfinite(sim->playerPosition().y)) result=4;
+                if(!exported || !std::filesystem::exists(options.screenshot) || !std::isfinite(sim->playerPosition().x) || !std::isfinite(sim->playerPosition().y)) result=4;
                 quit=true;
             }
         }

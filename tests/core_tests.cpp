@@ -96,6 +96,16 @@ int main() {
             check(length(s.vehicle(id)->velocity)<speed,"braking failed");
             in={};in.enter=true;s.tick(in);check(s.player.vehicle==-1,"exit failed");check(!s.city.blocked(s.player.position,9),"unsafe exit");
         }},
+        {"vehicle: handbrake preserves measurable lateral drift",[] {
+            Simulation a(12),b(12);emptyCity(a);emptyCity(b);
+            a.city.buildings.clear();b.city.buildings.clear();
+            int x=a.spawnVehicle({1500,1500},VehicleKind::Sport,0),y=b.spawnVehicle({1500,1500},VehicleKind::Sport,0);
+            a.player.vehicle=x;b.player.vehicle=y;a.vehicle(x)->velocity={200,0};b.vehicle(y)->velocity={200,0};
+            Input normal;normal.throttle=1;normal.steering=0.45f;Input drift=normal;drift.handbrake=true;
+            ticks(a,60,normal);ticks(b,60,drift);
+            auto slip=[](const Vehicle& v){Vec2 f=direction(v.heading);return std::abs(dot(v.velocity,Vec2{-f.y,f.x}));};
+            check(slip(*b.vehicle(y))>slip(*a.vehicle(x))*1.8f,"handbrake did not increase lateral slip");
+        }},
         {"vehicle: theft and police theft escalate wanted",[] {
             Simulation s;emptyCity(s);s.player.position={200,64};s.spawnVehicle({230,64},VehicleKind::Police,1);
             Input in;in.enter=true;s.tick(in);check(s.wanted()>=2,"police theft severity");

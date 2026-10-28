@@ -157,11 +157,17 @@ void Simulation::drive(Vehicle& car,float throttle,float steer,bool handbrake,fl
     longitudinal=approach(longitudinal,0,(std::abs(throttle)<0.01f?32.0f:7.0f)*dt);
     longitudinal=std::clamp(longitudinal,-85.0f,car.topSpeed()*engine);
     float grip=handbrake?1.6f:9.0f;
-    lateral*=std::exp(-grip*dt);
+    // Preserve world-space momentum through yaw; grip then pulls velocity toward
+    // the new heading. This gives the handbrake real lateral slip, not tank turns.
+    Vec2 momentum=forward*longitudinal+side*lateral;
     float turning=std::clamp(longitudinal/65.0f,-1.0f,1.0f);
     car.heading=wrapAngle(car.heading+steer*turning*(handbrake?3.4f:2.0f)*dt);
-    car.velocity=direction(car.heading)*longitudinal+side*lateral;
+    Vec2 newForward=direction(car.heading),newSide=rightOf(newForward);
+    float slip=dot(momentum,newSide)*std::exp(-grip*dt);
+    car.velocity=newForward*dot(momentum,newForward)+newSide*slip;
     if(handbrake) car.velocity*=std::exp(-0.8f*dt);
+    if(car.driver==0 && std::abs(slip)>32 && length(car.velocity)>80)
+        events.push_back({EventKind::Skid,car.position,"",car.heading});
     bool hit=false;
     Vec2 previous=car.position;
     car.position=city.moveCircle(car.position,car.velocity*dt,19,&hit);

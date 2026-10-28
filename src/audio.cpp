@@ -21,7 +21,7 @@ Sound Audio::makeSound(int kind) {
     return LoadSoundFromWave(wave);
 }
 Audio::Audio() {
-    SetTraceLogLevel(LOG_WARNING);InitAudioDevice();ready_=IsAudioDeviceReady();
+    InitAudioDevice();ready_=IsAudioDeviceReady();
     if(!ready_) return;
     for(int i=0;i<5;++i) sounds_[static_cast<std::size_t>(i)]=makeSound(i);
     SetAudioStreamBufferSizeDefault(1024);music_=LoadAudioStream(22050,32,1);PlayAudioStream(music_);

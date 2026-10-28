@@ -24,12 +24,12 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2022, macos-14]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install Linux graphics and audio headers
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev xvfb python3-pil
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev xvfb python3-pil pulseaudio
       - name: Configure release
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build release
@@ -46,6 +46,26 @@ jobs:
           xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke --frames 240 --screenshot artifacts/gameplay.png 2>&1 | tee artifacts/smoke.log
           if grep -E 'WARNING: SHADER:.*(Failed|failed)|ERROR:' artifacts/smoke.log; then exit 1; fi
           python3 tests/validate_screenshot.py artifacts/gameplay.png
+          for scene in title map garage; do
+            xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke-view "$scene" --frames 60 --screenshot "artifacts/$scene.png" > "artifacts/$scene.log" 2>&1
+            python3 tests/validate_screenshot.py "artifacts/$scene.png"
+          done
+      - name: Synthesized audio smoke test (virtual PulseAudio sink)
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=neon_ci
+          pactl set-default-sink neon_ci
+          parecord --device=neon_ci.monitor --raw --rate=22050 --channels=1 --format=float32le artifacts/audio.f32 &
+          recorder=$!
+          trap 'kill "$recorder" 2>/dev/null || true' EXIT
+          xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke-audio --frames 180 --screenshot artifacts/audio-scene.png > artifacts/audio.log 2>&1
+          kill "$recorder"
+          wait "$recorder" || true
+          grep AUDIO_READY artifacts/audio.log
+          python3 tests/validate_audio.py artifacts/audio.f32
       - name: Stage portable package
         run: cmake --install build --config Release --prefix package/NeonBorough
       - name: Package Windows ZIP
@@ -59,7 +79,7 @@ jobs:
         if: runner.os == 'macOS'
         run: tar -czf NeonBorough-macOS-arm64.tar.gz -C package NeonBorough
       - name: Upload portable build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: NeonBorough-${{ runner.os }}
           path: |
@@ -69,7 +89,7 @@ jobs:
           retention-days: 30
       - name: Upload renderer evidence
         if: always() && runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: renderer-evidence
           path: artifacts/
@@ -80,7 +100,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Configure instrumented headless core
         run: cmake -S . -B build -DNB_BUILD_GAME=OFF -DNB_SANITIZERS=ON -DCMAKE_BUILD_TYPE=Debug
       - name: Build
@@ -99,7 +119,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: NeonBorough-*
           path: release

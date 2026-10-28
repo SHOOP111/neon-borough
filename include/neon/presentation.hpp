@@ -13,6 +13,7 @@ struct ViewState {
 };
 struct Particle { Vec2 position{},velocity{}; float life{},maximum{},size{}; Color color{}; };
 struct Toast { std::string text;float life{};bool reward{}; };
+struct SkidMark { Vec2 a{},b{};float life{10}; };
 class Presentation {
     Camera2D camera_{};
     RenderTexture2D scene_{};
@@ -21,6 +22,7 @@ class Presentation {
     Rng rng_{47};
     std::vector<Particle> particles_;
     std::deque<Toast> toasts_;
+    std::deque<SkidMark> skids_;
     float clock_{},zoom_{1};
     void resize();
     void drawCity(const Simulation& sim,Rect visible);
@@ -51,6 +53,7 @@ public:
     ~Audio();
     Audio(const Audio&)=delete;
     Audio& operator=(const Audio&)=delete;
+    bool ready() const { return ready_; }
     void ingest(const std::vector<Event>& events,float volume);
     void update(const Simulation& sim,const ViewState& view,float dt);
 };

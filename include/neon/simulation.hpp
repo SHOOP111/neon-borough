@@ -21,7 +21,7 @@ struct Pedestrian {
     int color{},corner{},nextCorner{};
 };
 struct Bullet { Vec2 position{},previous{},velocity{}; float life{1.2f}; bool hostile{}; };
-enum class EventKind { Notice, Shot, Impact, Explosion, Reward, Siren };
+enum class EventKind { Notice, Shot, Impact, Explosion, Reward, Siren, Skid };
 struct Event { EventKind kind{}; Vec2 position{}; std::string text; float value{}; };
 struct Player {
     Vec2 position{},aim{1,0};

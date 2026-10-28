@@ -39,7 +39,7 @@ There are no asset downloads or installation steps. OpenGL 3.3 and a working des
 | Toggle help | F1 |
 | Fullscreen | F11 |
 
-On a car, W is throttle, S brakes before reversing, and A/D steer. Steering needs motion; this is not tank-style movement. The sidearm can also be fired from a vehicle. Do not run over civilians: it costs money and raises heat.
+On a car, W is throttle, S brakes before reversing, and A/D steer. Steering needs motion; this is not tank-style movement. The handbrake preserves lateral momentum and leaves fading tire marks. The sidearm can also be fired from a vehicle. Do not run over civilians: it costs money and raises heat.
 
 ## Implemented systems
 
@@ -56,7 +56,7 @@ On a car, W is throttle, S brakes before reversing, and A/D steer. Steering need
 
 **Development builds and tests are run on GitHub-hosted runners, not on the author's PC.** The repository includes no script that automatically compiles locally.
 
-[The workflow](.github/workflows/ci.yml) builds release binaries on Ubuntu, Windows, and macOS, runs the headless core test suite on all three, and runs ASan/UBSan separately on Linux. The Linux game is launched under Xvfb with software OpenGL. CI checks the captured framebuffer and uploads the screenshot and renderer log as evidence. Version tags publish packages only after all required jobs pass.
+[The workflow](.github/workflows/ci.yml) builds release binaries on Ubuntu, Windows, and macOS, runs the headless core test suite on all three, and runs ASan/UBSan separately on Linux. The Linux game is launched under Xvfb with software OpenGL. CI checks captured gameplay, title, map, and garage framebuffers, then initializes audio against a virtual PulseAudio sink and checks recorded output for signal, finite samples, and clipping. Screenshots, audio capture, and logs are uploaded as evidence. Version tags publish packages only after all required jobs pass.
 
 To build or test without using your PC:
 
@@ -76,7 +76,7 @@ Progress is saved after contracts, purchases, rest, recovery, and normal exit. A
 
 `--seed N` selects a city seed. `--no-audio` avoids initializing the audio device. `--no-save` runs without disk persistence. `--save-dir PATH` isolates saves. `--help` lists options. Delete or move the save to reset progress.
 
-CI uses `--smoke --frames 240 --screenshot artifacts/gameplay.png`; this disables audio and saving and runs scripted input. It is an automated smoke check, not a substitute for human playtesting.
+CI uses `--smoke --frames 240 --screenshot artifacts/gameplay.png`; this disables audio and saving and runs scripted input. `--smoke-view title|map|garage` captures overlays, and `--smoke-audio` enables audio for the virtual-device check. It is an automated smoke check, not a substitute for human playtesting.
 
 ## License
 

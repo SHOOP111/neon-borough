@@ -32,10 +32,11 @@ All development compilation/testing is remote. No local build or test has been e
 - **Desktop matrix:** Ubuntu 24.04 x64, Windows Server 2022 x64 / MSVC, macOS 14 arm64.
 - **Core tests:** reproducible layout, all-pairs shortest routes, collision tunneling and sliding, timestep guards, stamina, driving, theft, gunfire, armor, reload, dispatch/escape, all three mission types, mission failure, pool exhaustion, economy, recovery, save round trips and corruption, and long simulation stress.
 - **Sanitizers:** separate headless Linux Debug build with AddressSanitizer and UndefinedBehaviorSanitizer, including leak detection.
-- **Renderer:** Linux release binary launched in Xvfb using Mesa software OpenGL; scripted gameplay, frame capture, shader-error log check, framebuffer dimensions/variance/color/highlight checks.
-- **Artifacts:** portable platform packages plus PNG and renderer log, retained for 30 days.
+- **Renderer:** Linux release binary launched in Xvfb using Mesa software OpenGL; scripted gameplay and title/map/garage captures, shader-error log check, framebuffer dimensions/variance/color/highlight checks.
+- **Audio:** game initialized against a PulseAudio null sink; monitor recording checked for finite float samples, audible RMS, and absence of clipping.
+- **Artifacts:** portable platform packages plus PNGs, captured audio, and logs, retained for 30 days.
 - **Releases:** pushing a `v*` tag publishes binaries only after both desktop and sanitizer jobs succeed.
 
-A passing framebuffer test proves that geometry, shader, HUD, and a graphics context produced a nonblank frame. It does not prove every visual detail is correct. Screenshots should also be inspected. Interactive audio is not initialized by the smoke run and remains a manual test requirement.
+A passing framebuffer test proves that geometry, shader, HUD, and a graphics context produced a nonblank frame. It does not prove every visual detail is correct. Screenshots should also be inspected. Audio smoke verifies device startup and non-silent output on Linux; perceived mix quality and other platforms' device behavior still need human testing.
 
 To reproduce remotely, use **Actions → CI → Run workflow** or submit a PR. To publish, push a version tag after reviewing the CI evidence. CMake fetches raylib 5.5 by immutable release commit, and the core-only sanitizer build makes no external dependency fetch.
