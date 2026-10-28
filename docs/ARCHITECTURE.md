@@ -35,7 +35,8 @@ All development compilation/testing is remote. No local build or test has been e
 - **Renderer:** Linux release binary launched in Xvfb using Mesa software OpenGL; scripted gameplay and title/map/garage captures, shader-error log check, framebuffer dimensions/variance/color/highlight checks.
 - **Audio:** game initialized against a PulseAudio null sink; monitor recording checked for finite float samples, audible RMS, and absence of clipping.
 - **Artifacts:** portable platform packages plus PNGs, captured audio, and logs, retained for 30 days.
-- **Releases:** pushing a `v*` tag publishes binaries only after both desktop and sanitizer jobs succeed.
+- **Style:** clang-format 18 checks all project C++ on a hosted runner; the manual formatting workflow can apply style changes remotely.
+- **Releases:** pushing a `v*` tag publishes packages, SHA-256 checksums, and four screenshots only after desktop, sanitizer, and style jobs succeed.
 
 A passing framebuffer test proves that geometry, shader, HUD, and a graphics context produced a nonblank frame. It does not prove every visual detail is correct. Screenshots should also be inspected. Audio smoke verifies device startup and non-silent output on Linux; perceived mix quality and other platforms' device behavior still need human testing.
 

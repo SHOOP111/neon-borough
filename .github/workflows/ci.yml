@@ -35,7 +35,7 @@ jobs:
       - name: Build release
         run: cmake --build build --config Release --parallel 3
       - name: Headless core tests
-        run: ctest --test-dir build -C Release --output-on-failure --timeout 180
+        run: ctest --test-dir build -C Release --output-on-failure --verbose --timeout 180
       - name: Renderer smoke test (software OpenGL, virtual display)
         if: runner.os == 'Linux'
         env:
@@ -109,22 +109,41 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ctest --test-dir build --output-on-failure --timeout 180
+        run: ctest --test-dir build --output-on-failure --verbose --timeout 180
+
+  style:
+    name: C++ / remote formatting check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Install hosted formatter
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - name: Check source style
+        run: clang-format-18 --dry-run --Werror include/neon/*.hpp src/*.cpp tests/core_tests.cpp
 
   release:
     name: Publish tagged release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [desktop, sanitizers]
+    needs: [desktop, sanitizers, style]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: NeonBorough-*
           path: release
           merge-multiple: true
-      - name: Publish verified binaries
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: renderer-evidence
+          path: evidence
+      - name: Checksum packages
+        run: cd release && sha256sum NeonBorough-* > SHA256SUMS.txt
+      - name: Publish verified binaries and screenshots
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --title "Neon Borough $GITHUB_REF_NAME" --generate-notes
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* evidence/gameplay.png evidence/title.png evidence/map.png evidence/garage.png --repo "$GITHUB_REPOSITORY" --title "Neon Borough $GITHUB_REF_NAME" --notes-file CHANGELOG.md

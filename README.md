@@ -4,6 +4,8 @@
 
 [![CI](https://github.com/SHOOP111/neon-borough/actions/workflows/ci.yml/badge.svg)](https://github.com/SHOOP111/neon-borough/actions/workflows/ci.yml)
 
+![Neon Borough gameplay captured on a GitHub-hosted runner](https://github.com/SHOOP111/neon-borough/releases/download/v0.1.0/gameplay.png)
+
 > This is a substantial first playable release, not a claim of AAA completeness. Single-player desktop only. See [scope and limitations](docs/DESIGN.md#scope-and-limitations).
 
 ## Play
@@ -56,7 +58,7 @@ On a car, W is throttle, S brakes before reversing, and A/D steer. Steering need
 
 **Development builds and tests are run on GitHub-hosted runners, not on the author's PC.** The repository includes no script that automatically compiles locally.
 
-[The workflow](.github/workflows/ci.yml) builds release binaries on Ubuntu, Windows, and macOS, runs the headless core test suite on all three, and runs ASan/UBSan separately on Linux. The Linux game is launched under Xvfb with software OpenGL. CI checks captured gameplay, title, map, and garage framebuffers, then initializes audio against a virtual PulseAudio sink and checks recorded output for signal, finite samples, and clipping. Screenshots, audio capture, and logs are uploaded as evidence. Version tags publish packages only after all required jobs pass.
+[The workflow](.github/workflows/ci.yml) builds release binaries on Ubuntu, Windows, and macOS, runs the headless core test suite on all three, and runs ASan/UBSan separately on Linux. The Linux game is launched under Xvfb with software OpenGL. CI checks captured gameplay, title, map, and garage framebuffers, then initializes audio against a virtual PulseAudio sink and checks recorded output for signal, finite samples, and clipping. Screenshots, audio capture, and logs are uploaded as evidence. Version tags publish packages, SHA-256 checksums, and screenshots only after desktop, sanitizer, and style checks pass.
 
 To build or test without using your PC:
 
