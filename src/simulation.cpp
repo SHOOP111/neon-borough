@@ -39,8 +39,8 @@ Simulation::Simulation(std::uint64_t seed) : rng_(seed^0x43495459ULL),city(seed)
         int id=spawnVehicle(pos,static_cast<VehicleKind>(rng_.integer(0,2)), -1);
         auto* car=vehicle(id); car->nodeFrom=n;car->nodeTo=next;car->heading=angle(dir); car->velocity=dir*80;
     }
-    int starter=spawnVehicle({210,100},VehicleKind::Sport,2);
-    vehicle(starter)->heading=0;
+    int starter=spawnVehicle({210,484},VehicleKind::Sport,2);
+    vehicle(starter)->heading=0;vehicle(starter)->color=6;
     for(int i=0;i<100;++i) {
         int block=rng_.integer(0,cityBlocks*cityBlocks-1), corner=rng_.integer(0,3);
         Vec2 a=sidewalkCorner(block,corner),b=sidewalkCorner(block,(corner+1)%4);

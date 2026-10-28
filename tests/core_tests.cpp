@@ -83,6 +83,14 @@ int main() {
             Simulation s;auto d=s.digest();s.tick({},0);s.tick({},-1);s.tick({},1);s.tick({},NAN);
             check(s.digest()==d,"invalid dt mutated state");
         }},
+        {"player: first session has reachable loft and identifiable sports car",[] {
+            Simulation s;check(distance(s.player.position,s.city.services.front().position)<86,"loft is out of reach");
+            bool starter=false;
+            for(const auto& v:s.vehicles) if(v.active && v.driver==2 && v.kind==VehicleKind::Sport && distance(v.position,s.player.position)<56) {
+                starter=v.color==6 && !s.city.blocked(v.position,19);
+            }
+            check(starter,"no accessible pink starter car");
+        }},
         {"player: sprint consumes stamina and regenerates",[] {
             Simulation s;emptyCity(s);s.player.position={200,64};Input in;in.movement={1,0};in.sprint=true;
             ticks(s,90,in);check(s.player.stamina<60,"sprint not consumed");float low=s.player.stamina;

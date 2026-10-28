@@ -25,7 +25,7 @@ City::City(std::uint64_t seedValue) : seed(seedValue) {
         }
     }
     services = {
-        {{176,132},ServiceKind::Safehouse,"THE LOFT",0},
+        {{176,516},ServiceKind::Safehouse,"THE LOFT",0},
         {{560,132},ServiceKind::Contact,"RELAY / courier",0},
         {{1712,132},ServiceKind::Contact,"VECTOR / acquisition",1},
         {{2480,900},ServiceKind::Contact,"STATIC / extraction",1},
@@ -100,5 +100,5 @@ std::vector<int> City::route(Vec2 start, Vec2 end) const {
     return path;
 }
 int City::districtAt(Vec2 p) const { return (p.x>=citySize/2 ? 1:0)+(p.y>=citySize/2 ? 2:0); }
-Vec2 City::spawn() const { return {176,100}; }
+Vec2 City::spawn() const { return {176,484}; }
 }

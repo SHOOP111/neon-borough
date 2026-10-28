@@ -1,0 +1,37 @@
+name: Gameplay / platform bug
+description: Report a reproducible problem in a CI-built package.
+body:
+  - type: input
+    id: revision
+    attributes:
+      label: Release or commit
+      placeholder: v0.1.0 / commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows x64
+        - Linux x64
+        - macOS Apple Silicon
+    validations:
+      required: true
+  - type: input
+    id: seed
+    attributes:
+      label: City seed / command-line options
+      placeholder: Default seed 2025
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps, expected behavior, and actual behavior
+      description: Include the mission type and whether you were driving, wanted, or in an overlay.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or relevant log excerpts
+      description: Do not include tokens, credentials, private paths, or personal information.

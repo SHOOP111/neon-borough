@@ -36,7 +36,9 @@ void button(Rect r,const std::string& label,bool active=false) {
     box(r,hover?Color{32,65,72,250}:Color{19,32,45,240});
     outline(r,hover||active?cyan:Color{50,69,83,255});
     if(hover) box({r.x,r.y,3,r.h},cyan);
-    text(label,r.x+18,r.y+12,18,hover?cyan:paper);
+    float fontSize=18;
+    while(fontSize>12 && MeasureTextEx(GetFontDefault(),label.c_str(),fontSize,1).x>r.w-36) fontSize-=0.5f;
+    text(label,r.x+18,r.y+(r.h-fontSize)*0.5f,fontSize,hover?cyan:paper);
 }
 void carRect(const Vehicle& car,Vec2 offset,Vec2 size,Color color) {
     Vec2 f=direction(car.heading),s{-f.y,f.x};
@@ -266,7 +268,9 @@ void Presentation::drawActors(const Simulation& sim,Rect visible) {
                 DrawCircleV(rv(car.position+f*15+Vec2{age*9,-age*25}),2+age*5,alpha(muted,(1-age)*0.35f));
             }
         }
-        if(car.id==sim.player.vehicle) {DrawCircleV(rv(car.position),3,paper);}
+        if(car.id==sim.player.vehicle) {
+            DrawCircleV(rv(car.position),3,paper);DrawCircleLinesV(rv(car.position),27,alpha(cyan,0.48f));
+        }
     }
     if(sim.player.vehicle==-1) {
         Vec2 p=sim.player.position,d=sim.player.aim,s{-d.y,d.x};

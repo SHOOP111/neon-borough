@@ -78,9 +78,9 @@ int main(int argc,char** argv) {
         presentation.ingest(sim->events);
         if(options.smoke) {
             view.screen=neon::Screen::Playing;view.showHelp=false;
-            sim->player.position={580,100};
-            int id=sim->spawnVehicle({580,100},neon::VehicleKind::Sport,0);
-            sim->player.vehicle=id;sim->vehicle(id)->heading=0;sim->startMission(0);
+            sim->player.position={580,484};
+            int id=sim->spawnVehicle({580,484},neon::VehicleKind::Sport,0);
+            sim->player.vehicle=id;sim->vehicle(id)->heading=0;sim->vehicle(id)->color=6;sim->startMission(0);
             if(options.smokeView=="title") view.screen=neon::Screen::Title;
             if(options.smokeView=="map") view.map=true;
             if(options.smokeView=="garage") {
