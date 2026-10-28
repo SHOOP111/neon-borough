@@ -133,7 +133,7 @@ void Simulation::updatePlayer(const Input& in,float dt) {
         --player.ammo;player.shotTimer=0.18f;
         Vec2 dir=direction(angle(player.aim)+rng_.range(-0.035f,0.035f));
         addBullet(playerPosition()+dir*(player.vehicle==-1?14.0f:26.0f),dir,false);
-        crime(0.09f);trauma=std::max(trauma,0.08f);
+        crime(0.18f);trauma=std::max(trauma,0.08f);
     }
     if(in.shoot && player.ammo==0 && player.reserve>0 && player.reloadTimer==0) player.reloadTimer=1.15f;
     if(in.interact) interact();

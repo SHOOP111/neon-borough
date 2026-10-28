@@ -87,7 +87,8 @@ void Presentation::resize() {
 }
 Vec2 Presentation::worldMouse() const {Vector2 p=GetScreenToWorld2D(GetMousePosition(),camera_);return {p.x,p.y};}
 void Presentation::message(const std::string& value,bool reward) {
-    if(toasts_.size()>=4) toasts_.pop_front();toasts_.push_back({value,reward?6.0f:4.5f,reward});
+    if(toasts_.size()>=4) toasts_.pop_front();
+    toasts_.push_back({value,reward?6.0f:4.5f,reward});
 }
 void Presentation::ingest(const std::vector<Event>& events) {
     for(const auto& e:events) {
@@ -422,6 +423,10 @@ void Presentation::render(const Simulation& sim,const ViewState& view,float dt) 
     if(view.screen==Screen::Title) target={650+120*std::sin(clock_*0.12f),640+95*std::cos(clock_*0.11f)};
     camera_.target=rv(lerp({camera_.target.x,camera_.target.y},target,1-std::exp(-5*dt)));
     zoom_=lerp(zoom_,speed>160?0.88f:1.08f,1-std::exp(-2*dt));camera_.zoom=zoom_;
+    float halfWidth=w/(2*zoom_),halfHeight=h/(2*zoom_);
+    // Keep the camera inside the world, including the initial safehouse view.
+    camera_.target.x=std::clamp(camera_.target.x,std::min(halfWidth,citySize/2),std::max(citySize-halfWidth,citySize/2));
+    camera_.target.y=std::clamp(camera_.target.y,std::min(halfHeight,citySize/2),std::max(citySize-halfHeight,citySize/2));
     camera_.offset={w/2,h/2};
     if(view.effects) {float shake=sim.trauma*sim.trauma*9;camera_.offset.x+=std::sin(clock_*63)*shake;camera_.offset.y+=std::cos(clock_*71)*shake;}
     Rect visible{camera_.target.x-w/(2*zoom_)-100,camera_.target.y-h/(2*zoom_)-100,w/zoom_+200,h/zoom_+200};

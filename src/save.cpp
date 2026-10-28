@@ -8,7 +8,7 @@ namespace neon {
 namespace {
 std::uint64_t checksum(const std::string& data) {
     std::uint64_t result=1469598103934665603ULL;
-    for(unsigned char c:data) {result^=c;result*=1099511628211ULL;}
+    for(char c:data) {result^=static_cast<unsigned char>(c);result*=1099511628211ULL;}
     return result;
 }
 bool valid(const Progress& p) {
