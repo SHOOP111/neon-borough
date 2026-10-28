@@ -14,14 +14,31 @@ constexpr float citySize = static_cast<float>(cityTiles * tileSize);
 constexpr float streetWidth = 128.0f;
 
 enum class BuildingKind { Residential, Offices, Warehouse, Club };
-struct Building { Rect bounds; BuildingKind kind{}; int palette{}, floors{}; std::uint32_t detail{}; };
-struct Park { Rect bounds; std::vector<Vec2> trees; };
+struct Building {
+    Rect bounds;
+    BuildingKind kind{};
+    int palette{}, floors{};
+    std::uint32_t detail{};
+};
+struct Park {
+    Rect bounds;
+    std::vector<Vec2> trees;
+};
 enum class ServiceKind { Contact, Garage, Safehouse };
-struct Service { Vec2 position; ServiceKind kind{}; std::string name; int district{}; };
-struct District { std::string name; Vec2 center; int color{}; };
+struct Service {
+    Vec2 position;
+    ServiceKind kind{};
+    std::string name;
+    int district{};
+};
+struct District {
+    std::string name;
+    Vec2 center;
+    int color{};
+};
 
 class City {
-public:
+  public:
     std::uint64_t seed;
     std::vector<Building> buildings;
     std::vector<Park> parks;
@@ -39,4 +56,4 @@ public:
     int districtAt(Vec2 p) const;
     Vec2 spawn() const;
 };
-}
+} // namespace neon
