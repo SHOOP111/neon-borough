@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Desktop / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux graphics and audio headers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev xvfb python3-pil
+      - name: Configure release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build release
+        run: cmake --build build --config Release --parallel 3
+      - name: Headless core tests
+        run: ctest --test-dir build -C Release --output-on-failure --timeout 180
+      - name: Renderer smoke test (software OpenGL, virtual display)
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          mkdir -p artifacts
+          set -o pipefail
+          xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke --frames 240 --screenshot artifacts/gameplay.png 2>&1 | tee artifacts/smoke.log
+          if grep -E 'WARNING: SHADER:.*(Failed|failed)|ERROR:' artifacts/smoke.log; then exit 1; fi
+          python3 tests/validate_screenshot.py artifacts/gameplay.png
+      - name: Stage portable package
+        run: cmake --install build --config Release --prefix package/NeonBorough
+      - name: Package Windows ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path package/NeonBorough -DestinationPath NeonBorough-Windows-x64.zip
+      - name: Package Linux archive
+        if: runner.os == 'Linux'
+        run: tar -czf NeonBorough-Linux-x64.tar.gz -C package NeonBorough
+      - name: Package macOS archive
+        if: runner.os == 'macOS'
+        run: tar -czf NeonBorough-macOS-arm64.tar.gz -C package NeonBorough
+      - name: Upload portable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeonBorough-${{ runner.os }}
+          path: |
+            NeonBorough-*.zip
+            NeonBorough-*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload renderer evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-evidence
+          path: artifacts/
+          retention-days: 30
+
+  sanitizers:
+    name: Core / ASan + UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure instrumented headless core
+        run: cmake -S . -B build -DNB_BUILD_GAME=OFF -DNB_SANITIZERS=ON -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build --parallel 3
+      - name: Run instrumented tests
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build --output-on-failure --timeout 180
+
+  release:
+    name: Publish tagged release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, sanitizers]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: NeonBorough-*
+          path: release
+          merge-multiple: true
+      - name: Publish verified binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --title "Neon Borough $GITHUB_REF_NAME" --generate-notes

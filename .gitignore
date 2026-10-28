@@ -1,0 +1,13 @@
+build*/
+package/
+artifacts/
+*.sav
+*.sav.tmp
+*.sav.bak
+neon-smoke.png
+*.zip
+*.tar.gz
+.vs/
+.vscode/
+.DS_Store
+Thumbs.db
