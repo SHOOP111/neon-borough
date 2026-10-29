@@ -530,8 +530,8 @@ void Presentation::drawHud(const Simulation& sim, const ViewState& view) {
              card.y + 139, 12, gold);
     } else {
         box({w - 334, 24, 310, 92}, panel);
-        text(view.waypointSet ? "WAYPOINT / FOLLOW CYAN ROUTE" : "FREE ROAM / FIND A CONTACT", w - 318,
-             39, 15, cyan);
+        text(view.waypointSet ? "WAYPOINT / FOLLOW CYAN ROUTE" : "FREE ROAM / FIND A CONTACT", w - 318, 39,
+             15, cyan);
         text("Cyan diamonds offer paid contracts.", w - 318, 66, 13, muted);
         text("F: interact   M: city map   ESC: pause", w - 318, 88, 12, paper);
     }
