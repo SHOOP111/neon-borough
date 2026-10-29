@@ -878,8 +878,8 @@ std::uint64_t Simulation::digest() const {
     auto integer = [&mix](int v) { mix(static_cast<std::uint64_t>(v)); };
     auto string = [&mix](const std::string& v) {
         mix(v.size());
-        for (unsigned char c : v)
-            mix(c);
+        for (char c : v)
+            mix(static_cast<unsigned char>(c));
     };
     mix(city.seed);
     mix(rng_.state());

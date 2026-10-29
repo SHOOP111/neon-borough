@@ -568,7 +568,7 @@ void Presentation::drawHud(const Simulation& sim, const ViewState& view) {
     if (view.showHelp) {
         box({w / 2 - 231, h - 154, 462, 68}, panel);
         text("WASD move / drive   SHIFT sprint   SPACE handbrake", w / 2 - 216, h - 140, 13, paper);
-        text("E enter / exit   F interact   LMB shoot   H horn", w / 2 - 216, h - 116, 13, muted);
+        text("E enter / exit   F interact   LMB shoot   F1 help", w / 2 - 216, h - 116, 13, muted);
     }
     if (sim.garageOpen) {
         Rect r{w / 2 - 230, h / 2 - 132, 460, 264};
@@ -630,9 +630,11 @@ void Presentation::drawMenu(const Simulation& sim, const ViewState& view) {
     box({70, 316, 130, 4}, pink);
     text(view.screen == Screen::Paused ? "SIGNAL PAUSED" : "THE STREETS DON'T SLEEP.", 70, 344, 20, muted);
     button({70, y, 300, 46}, view.screen == Screen::Paused ? "RESUME / ENTER" : "ENTER THE BOROUGH / ENTER",
-           true);
-    button({70, y + 60, 300, 46}, "SETTINGS");
-    button({70, y + 120, 300, 46}, view.screen == Screen::Paused ? "RETURN TO TITLE" : "QUIT");
+           view.menuSelection == 0);
+    button({70, y + 60, 300, 46}, "SETTINGS", view.menuSelection == 1);
+    button({70, y + 120, 300, 46}, view.screen == Screen::Paused ? "RETURN TO TITLE" : "QUIT",
+           view.menuSelection == 2);
+    text("UP / DOWN / TAB select   ENTER confirm   Q quit / title", 70, y + 178, 12, muted);
     float x = std::max(600.0f, w - 510);
     box({x, 156, 420, 355}, {14, 27, 39, 230});
     box({x, 156, 3, 355}, cyan);

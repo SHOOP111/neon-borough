@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory(prefix="neon-cli-") as root:
         (["--size", "1100X700"], 2), (["--size", "1100x700junk"], 2),
         (["--size", "999999999999x800"], 2),
     ]
-    for view in ("gameplay", "title", "map", "garage", "paused", "settings", "waypoint"):
+    for view in ("gameplay", "title", "map", "garage", "paused", "settings", "waypoint", "lifecycle"):
         cases.append((["--help", "--smoke-view", view], 0))
     for args, expected in cases:
         result = subprocess.run([binary, *args], cwd=root, capture_output=True, text=True, timeout=10)

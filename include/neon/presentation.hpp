@@ -12,6 +12,7 @@ struct ViewState {
     bool map{}, rain{true}, effects{true}, audio{true}, fullscreen{}, showHelp{true}, waypointSet{};
     Vec2 waypoint{};
     float volume{0.65f};
+    int menuSelection{};
 };
 Rect mapBounds(float width, float height, bool full);
 std::optional<Vec2> navigationTarget(const Simulation& sim, const ViewState& view);

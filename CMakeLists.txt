@@ -46,6 +46,7 @@ if(NB_BUILD_GAME)
     # raylib 5.5, pinned to its immutable release commit.
     FetchContent_Declare(raylib
         URL https://github.com/raysan5/raylib/archive/c1ab645ca298a2801097931d1079b10ff7eb9df8.tar.gz
+        URL_HASH SHA256=be3443c3fb97f7cbd18ae3f0ea2a73e6c1486128df33b639dce7e44070fc285d
         DOWNLOAD_EXTRACT_TIMESTAMP FALSE)
     FetchContent_MakeAvailable(raylib)
     add_executable(neon_borough src/main.cpp src/presentation.cpp src/audio.cpp)

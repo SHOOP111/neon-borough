@@ -42,11 +42,6 @@ jobs:
           binary=build/neon_borough
           if [ "$RUNNER_OS" = Windows ]; then binary=build/Release/neon_borough.exe; fi
           python tests/validate_cli.py "$binary"
-      - name: Dependency archive checksum (hosted supply-chain evidence)
-        if: runner.os == 'Linux'
-        run: |
-          curl --fail --location --retry 3 https://github.com/raysan5/raylib/archive/c1ab645ca298a2801097931d1079b10ff7eb9df8.tar.gz -o "$RUNNER_TEMP/raylib.tar.gz"
-          sha256sum "$RUNNER_TEMP/raylib.tar.gz"
       - name: Renderer smoke test (software OpenGL, virtual display)
         if: runner.os == 'Linux'
         env:
@@ -57,11 +52,12 @@ jobs:
           xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke --frames 240 --screenshot artifacts/gameplay.png 2>&1 | tee artifacts/smoke.log
           if grep -E 'WARNING: SHADER:.*(Failed|failed)|ERROR:' artifacts/smoke.log; then exit 1; fi
           python3 tests/validate_screenshot.py artifacts/gameplay.png
-          for scene in title map garage paused settings waypoint; do
-            xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke-view "$scene" --frames 60 --screenshot "artifacts/$scene.png" > "artifacts/$scene.log" 2>&1
+          for scene in title map garage paused settings waypoint lifecycle; do
+            xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke-view "$scene" --frames 180 --screenshot "artifacts/$scene.png" > "artifacts/$scene.log" 2>&1
             if grep -E 'WARNING: SHADER:.*(Failed|failed)|ERROR:' "artifacts/$scene.log"; then exit 1; fi
             python3 tests/validate_screenshot.py "artifacts/$scene.png"
           done
+          grep 'SMOKE_LIFECYCLE frame=120' artifacts/lifecycle.log
           for size in 1100x700 1600x900; do
             xvfb-run -a -s "-screen 0 ${size}x24" ./build/neon_borough --smoke --size "$size" --frames 60 --screenshot "artifacts/gameplay-$size.png" > "artifacts/gameplay-$size.log" 2>&1
             python3 tests/validate_screenshot.py "artifacts/gameplay-$size.png" --width "${size%x*}" --height "${size#*x}"
@@ -183,9 +179,10 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: |
           mkdir -p artifacts
-          for scene in gameplay title map garage paused settings waypoint; do
-            xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke-view "$scene" --frames 90 --screenshot "artifacts/$scene.png" > "artifacts/$scene.log" 2>&1
+          for scene in gameplay title map garage paused settings waypoint lifecycle; do
+            xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke-view "$scene" --frames 180 --screenshot "artifacts/$scene.png" > "artifacts/$scene.log" 2>&1
           done
+          grep 'SMOKE_LIFECYCLE frame=120' artifacts/lifecycle.log
       - name: Upload instrumented renderer evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -214,6 +211,17 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Verify release tag matches the project version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          source = pathlib.Path('CMakeLists.txt').read_text()
+          version = re.search(r'project\(NeonBorough VERSION ([0-9.]+)', source).group(1)
+          if os.environ['RELEASE_TAG'] != 'v' + version:
+              raise SystemExit('Release tag must match the CMake project version')
+          PY
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: NeonBorough-*

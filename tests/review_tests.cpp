@@ -61,6 +61,15 @@ int main() {
              check(!std::isfinite(segmentCircleTime({0, 0}, {0, 0}, {50, 0}, 10)), "outside point");
              check(segmentRectTime({0, 0}, {100, 0}, {60, -10, 20, 20}) == 0.6f, "rectangle time");
          }},
+        {"rng: inclusive extreme integer ranges do not overflow", [] {
+            Rng rng(123);
+            for (int i = 0; i < 10000; ++i) {
+                (void)rng.integer(std::numeric_limits<int>::min(), std::numeric_limits<int>::max());
+                check(rng.integer(7, 7) == 7, "single-value range");
+                int value = rng.integer(9, -9);
+                check(value >= -9 && value <= 9, "inverted range");
+            }
+        }},
         {"world: rejects nonfinite and excessive movement safely",
          [] {
              City city;

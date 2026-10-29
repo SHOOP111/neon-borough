@@ -34,7 +34,7 @@ bool parse(int argc, char** argv, Options& o) {
         } else if (arg == "--smoke-view") {
             auto v = next();
             if (v != "gameplay" && v != "title" && v != "map" && v != "garage" && v != "paused" &&
-                v != "settings" && v != "waypoint")
+                v != "settings" && v != "waypoint" && v != "lifecycle")
                 return false;
             o.smoke = true;
             o.smokeView = v;
@@ -95,7 +95,8 @@ int run(int argc, char** argv) {
         std::cout
             << "Neon Borough\n--seed N --no-audio --no-save --save-dir PATH --size WIDTHxHEIGHT\n"
                "--smoke --frames N --screenshot PATH (CI-only scripted renderer smoke test)\n"
-               "--smoke-view gameplay|title|map|garage|paused|settings|waypoint --smoke-audio --smoke-mute\n";
+               "--smoke-view gameplay|title|map|garage|paused|settings|waypoint|lifecycle\n"
+               "--smoke-audio --smoke-mute\n";
         return 0;
     }
     std::optional<neon::Progress> saved;
@@ -195,6 +196,30 @@ int run(int argc, char** argv) {
             float w = static_cast<float>(GetScreenWidth()), h = static_cast<float>(GetScreenHeight());
             bool wasRunning = view.screen == neon::Screen::Playing && !view.map;
             bool wasGarage = sim->garageOpen;
+            float previousSimulationTime = sim->time;
+            if (options.smokeView == "lifecycle") {
+                if (frame == 0) view.screen = neon::Screen::Title;
+                if (frame == 20) view.screen = neon::Screen::Settings;
+                if (frame == 40 || frame == 120) {
+                    view.screen = neon::Screen::Playing;
+                    view.map = false;
+                    sim->garageOpen = false;
+                }
+                if (frame == 60) {
+                    auto* car = sim->vehicle(sim->player.vehicle);
+                    car->position = sim->city.services[7].position + neon::Vec2{0, -30};
+                    car->velocity = {};
+                    sim->garageOpen = true;
+                    SetWindowSize(1100, 700);
+                    view.effects = false;
+                }
+                if (frame == 80) view.map = true;
+                if (frame == 90) SetWindowSize(1600, 900);
+                if (frame == 100) { view.map = false; view.screen = neon::Screen::Paused; }
+                if (frame == 120) { SetWindowSize(1280, 800); view.effects = true; }
+                if (frame % 20 == 0 && frame <= 120)
+                    std::cout << "SMOKE_LIFECYCLE frame=" << frame << " simulation=" << sim->time << '\n';
+            }
             if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT))
                 suppressFire = false;
             if (!options.smoke && wasRunning && !IsWindowFocused())
@@ -223,19 +248,26 @@ int run(int argc, char** argv) {
                     view.screen = previous;
             } else if (view.screen != neon::Screen::Playing) {
                 float y = h * 0.55f;
-                if (IsKeyPressed(KEY_ENTER) ||
+                if (IsKeyPressed(KEY_UP)) view.menuSelection = (view.menuSelection + 2) % 3;
+                if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_TAB)) view.menuSelection = (view.menuSelection + 1) % 3;
+                bool activate = IsKeyPressed(KEY_ENTER);
+                if ((activate && view.menuSelection == 0) ||
                     (view.screen == neon::Screen::Paused && IsKeyPressed(KEY_ESCAPE)) ||
-                    clicked(70, y, 300, 46))
+                    clicked(70, y, 300, 46)) {
                     view.screen = neon::Screen::Playing;
-                else if (clicked(70, y + 60, 300, 46)) {
+                    view.menuSelection = 0;
+                } else if ((activate && view.menuSelection == 1) || clicked(70, y + 60, 300, 46)) {
                     previous = view.screen;
                     view.screen = neon::Screen::Settings;
-                } else if (clicked(70, y + 120, 300, 46)) {
+                } else if ((activate && view.menuSelection == 2) || IsKeyPressed(KEY_Q) ||
+                           clicked(70, y + 120, 300, 46)) {
                     if (view.screen == neon::Screen::Title)
                         quit = true;
                     else {
-                        if (save())
+                        if (save()) {
                             view.screen = neon::Screen::Title;
+                            view.menuSelection = 0;
+                        }
                     }
                 }
             } else {
@@ -304,7 +336,7 @@ int run(int argc, char** argv) {
                     pending.steering = frame > 160 ? 0.2f : 0;
                     pending.aim = sim->playerPosition() + neon::Vec2{200, -30};
                     pending.shoot = frame == 80 || frame == 100;
-                    if (options.smokeView == "garage")
+                    if (sim->garageOpen)
                         pending = {};
                 }
                 accumulator += dt;
@@ -327,6 +359,11 @@ int run(int argc, char** argv) {
                 accumulator = 0;
                 pending = {};
             }
+            if (options.smoke && !running && sim->time != previousSimulationTime) {
+                std::cerr << "Paused smoke scene advanced simulation.\n";
+                result = 6;
+                quit = true;
+            }
             if (view.waypointSet && !sim->mission.active &&
                 neon::distance(sim->playerPosition(), view.waypoint) < 60) {
                 view.waypointSet = false;
@@ -339,6 +376,11 @@ int run(int argc, char** argv) {
             else
                 ShowCursor();
             presentation.render(*sim, view, dt);
+            if (!presentation.ready()) {
+                std::cerr << "Render target unavailable after resize.\n";
+                result = 3;
+                quit = true;
+            }
             ++frame;
             if (options.smoke && frame >= options.frames) {
                 auto parent = options.screenshot.parent_path();
