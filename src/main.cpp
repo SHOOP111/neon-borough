@@ -92,11 +92,10 @@ int run(int argc, char** argv) {
         return 2;
     }
     if (options.help) {
-        std::cout
-            << "Neon Borough\n--seed N --no-audio --no-save --save-dir PATH --size WIDTHxHEIGHT\n"
-               "--smoke --frames N --screenshot PATH (CI-only scripted renderer smoke test)\n"
-               "--smoke-view gameplay|title|map|garage|paused|settings|waypoint|lifecycle\n"
-               "--smoke-audio --smoke-mute\n";
+        std::cout << "Neon Borough\n--seed N --no-audio --no-save --save-dir PATH --size WIDTHxHEIGHT\n"
+                     "--smoke --frames N --screenshot PATH (CI-only scripted renderer smoke test)\n"
+                     "--smoke-view gameplay|title|map|garage|paused|settings|waypoint|lifecycle\n"
+                     "--smoke-audio --smoke-mute\n";
         return 0;
     }
     std::optional<neon::Progress> saved;
@@ -198,8 +197,10 @@ int run(int argc, char** argv) {
             bool wasGarage = sim->garageOpen;
             float previousSimulationTime = sim->time;
             if (options.smokeView == "lifecycle") {
-                if (frame == 0) view.screen = neon::Screen::Title;
-                if (frame == 20) view.screen = neon::Screen::Settings;
+                if (frame == 0)
+                    view.screen = neon::Screen::Title;
+                if (frame == 20)
+                    view.screen = neon::Screen::Settings;
                 if (frame == 40 || frame == 120) {
                     view.screen = neon::Screen::Playing;
                     view.map = false;
@@ -213,10 +214,18 @@ int run(int argc, char** argv) {
                     SetWindowSize(1100, 700);
                     view.effects = false;
                 }
-                if (frame == 80) view.map = true;
-                if (frame == 90) SetWindowSize(1600, 900);
-                if (frame == 100) { view.map = false; view.screen = neon::Screen::Paused; }
-                if (frame == 120) { SetWindowSize(1280, 800); view.effects = true; }
+                if (frame == 80)
+                    view.map = true;
+                if (frame == 90)
+                    SetWindowSize(1600, 900);
+                if (frame == 100) {
+                    view.map = false;
+                    view.screen = neon::Screen::Paused;
+                }
+                if (frame == 120) {
+                    SetWindowSize(1280, 800);
+                    view.effects = true;
+                }
                 if (frame % 20 == 0 && frame <= 120)
                     std::cout << "SMOKE_LIFECYCLE frame=" << frame << " simulation=" << sim->time << '\n';
             }
@@ -248,8 +257,10 @@ int run(int argc, char** argv) {
                     view.screen = previous;
             } else if (view.screen != neon::Screen::Playing) {
                 float y = h * 0.55f;
-                if (IsKeyPressed(KEY_UP)) view.menuSelection = (view.menuSelection + 2) % 3;
-                if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_TAB)) view.menuSelection = (view.menuSelection + 1) % 3;
+                if (IsKeyPressed(KEY_UP))
+                    view.menuSelection = (view.menuSelection + 2) % 3;
+                if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_TAB))
+                    view.menuSelection = (view.menuSelection + 1) % 3;
                 bool activate = IsKeyPressed(KEY_ENTER);
                 if ((activate && view.menuSelection == 0) ||
                     (view.screen == neon::Screen::Paused && IsKeyPressed(KEY_ESCAPE)) ||
