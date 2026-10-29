@@ -452,8 +452,11 @@ void Presentation::drawMap(const Simulation& sim, const ViewState& view, bool fu
                   : s.kind == ServiceKind::Garage ? Color{101, 219, 142, 255}
                                                   : Color{188, 137, 255, 255};
         DrawCircleV(rv(p), full ? 4.0f : 2.2f, c);
-        if (full)
-            text(s.name, p.x + 8, p.y - 6, 10, c);
+        if (full) {
+            float labelWidth = MeasureTextEx(GetFontDefault(), s.name.c_str(), 10, 1).x;
+            float labelX = std::clamp(p.x + 8, r.x + 6, r.x + size - labelWidth - 6);
+            text(s.name, labelX, p.y - 6, 10, c);
+        }
     }
     for (const auto& v : sim.vehicles)
         if (v.active && v.driver == 1 && v.health > 0)
@@ -527,7 +530,7 @@ void Presentation::drawHud(const Simulation& sim, const ViewState& view) {
              card.y + 139, 12, gold);
     } else {
         box({w - 334, 24, 310, 92}, panel);
-        text(view.waypointSet ? "WAYPOINT ACTIVE / FOLLOW CYAN ROUTE" : "FREE ROAM / FIND A CONTACT", w - 318,
+        text(view.waypointSet ? "WAYPOINT / FOLLOW CYAN ROUTE" : "FREE ROAM / FIND A CONTACT", w - 318,
              39, 15, cyan);
         text("Cyan diamonds offer paid contracts.", w - 318, 66, 13, muted);
         text("F: interact   M: city map   ESC: pause", w - 318, 88, 12, paper);

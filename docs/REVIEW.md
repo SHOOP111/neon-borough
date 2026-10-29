@@ -55,7 +55,7 @@ Compilation, executable tests, sanitizers, formatting and evidence generation ru
 - PulseAudio output checked for finite samples, sustained signal, clipping and master-mix silence.
 - clang-format 18 is applied and checked remotely.
 
-The first expanded hosted run ([40877925354](https://github.com/SHOOP111/neon-borough/actions/runs/40877925354)) passed Linux/Windows, both sanitizer jobs, analysis, style and audio/framebuffer evidence. AppleClang identified a signed-character conversion promoted by warnings-as-errors; it was corrected with an explicit byte conversion rather than weakening the warning policy. The final branch/PR checks are the authoritative verification of the complete revision; artifacts and logs are available from [Actions](https://github.com/SHOOP111/neon-borough/actions/workflows/ci.yml).
+The first expanded hosted run ([40877925354](https://github.com/SHOOP111/neon-borough/actions/runs/40877925354)) passed Linux/Windows, both sanitizer jobs, analysis, style and audio/framebuffer evidence. AppleClang identified a signed-character conversion promoted by warnings-as-errors; it was corrected with an explicit byte conversion rather than weakening the warning policy. The complete expanded run then passed on all three desktop platforms ([40880051353](https://github.com/SHOOP111/neon-borough/actions/runs/40880051353)), including all 62 C++ cases and every required job. Hosted screenshots were inspected directly; small waypoint-card and map-label layout corrections followed. The latest branch/PR checks are the authoritative verification of the final revision; artifacts and logs are available from [Actions](https://github.com/SHOOP111/neon-borough/actions/workflows/ci.yml).
 
 ## Remaining limits — not claimed fixed
 
