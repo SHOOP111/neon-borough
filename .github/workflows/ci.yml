@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,11 +31,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev xvfb python3-pil pulseaudio
       - name: Configure release
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNB_WARNINGS_AS_ERRORS=ON
       - name: Build release
         run: cmake --build build --config Release --parallel 3
       - name: Headless core tests
         run: ctest --test-dir build -C Release --output-on-failure --verbose --timeout 180
+      - name: CLI contract (no display or persistence)
+        shell: bash
+        run: |
+          binary=build/neon_borough
+          if [ "$RUNNER_OS" = Windows ]; then binary=build/Release/neon_borough.exe; fi
+          python tests/validate_cli.py "$binary"
       - name: Renderer smoke test (software OpenGL, virtual display)
         if: runner.os == 'Linux'
         env:
@@ -46,9 +52,15 @@ jobs:
           xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke --frames 240 --screenshot artifacts/gameplay.png 2>&1 | tee artifacts/smoke.log
           if grep -E 'WARNING: SHADER:.*(Failed|failed)|ERROR:' artifacts/smoke.log; then exit 1; fi
           python3 tests/validate_screenshot.py artifacts/gameplay.png
-          for scene in title map garage; do
-            xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke-view "$scene" --frames 60 --screenshot "artifacts/$scene.png" > "artifacts/$scene.log" 2>&1
+          for scene in title map garage paused settings waypoint lifecycle; do
+            xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke-view "$scene" --frames 180 --screenshot "artifacts/$scene.png" > "artifacts/$scene.log" 2>&1
+            if grep -E 'WARNING: SHADER:.*(Failed|failed)|ERROR:' "artifacts/$scene.log"; then exit 1; fi
             python3 tests/validate_screenshot.py "artifacts/$scene.png"
+          done
+          grep 'SMOKE_LIFECYCLE frame=120' artifacts/lifecycle.log
+          for size in 1100x700 1600x900; do
+            xvfb-run -a -s "-screen 0 ${size}x24" ./build/neon_borough --smoke --size "$size" --frames 60 --screenshot "artifacts/gameplay-$size.png" > "artifacts/gameplay-$size.log" 2>&1
+            python3 tests/validate_screenshot.py "artifacts/gameplay-$size.png" --width "${size%x*}" --height "${size#*x}"
           done
       - name: Synthesized audio smoke test (virtual PulseAudio sink)
         if: runner.os == 'Linux'
@@ -58,14 +70,28 @@ jobs:
           pulseaudio --start --exit-idle-time=-1
           pactl load-module module-null-sink sink_name=neon_ci
           pactl set-default-sink neon_ci
-          parecord --device=neon_ci.monitor --raw --rate=22050 --channels=1 --format=float32le artifacts/audio.f32 &
-          recorder=$!
-          trap 'kill "$recorder" 2>/dev/null || true' EXIT
-          xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke-audio --frames 180 --screenshot artifacts/audio-scene.png > artifacts/audio.log 2>&1
-          kill "$recorder"
-          wait "$recorder" || true
-          grep AUDIO_READY artifacts/audio.log
-          python3 tests/validate_audio.py artifacts/audio.f32
+          for mode in audio mute; do
+            parecord --device=neon_ci.monitor --raw --rate=22050 --channels=1 --format=float32le "artifacts/$mode.f32" &
+            recorder=$!
+            trap 'kill "$recorder" 2>/dev/null || true' EXIT
+            xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough "--smoke-$mode" --frames 180 --screenshot "artifacts/$mode-scene.png" > "artifacts/$mode.log" 2>&1
+            kill "$recorder"
+            wait "$recorder" || true
+            grep AUDIO_READY "artifacts/$mode.log"
+            if grep -E 'ERROR:' "artifacts/$mode.log"; then exit 1; fi
+            if [ "$mode" = mute ]; then
+              python3 tests/validate_audio.py "artifacts/$mode.f32" --expect-silent
+            else
+              python3 tests/validate_audio.py "artifacts/$mode.f32"
+            fi
+          done
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-logs-${{ runner.os }}
+          path: build/Testing/Temporary/
+          if-no-files-found: ignore
       - name: Stage portable package
         run: cmake --install build --config Release --prefix package/NeonBorough
       - name: Package Windows ZIP
@@ -102,7 +128,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Configure instrumented headless core
-        run: cmake -S . -B build -DNB_BUILD_GAME=OFF -DNB_SANITIZERS=ON -DCMAKE_BUILD_TYPE=Debug
+        run: cmake -S . -B build -DNB_BUILD_GAME=OFF -DNB_SANITIZERS=ON -DNB_WARNINGS_AS_ERRORS=ON -DCMAKE_BUILD_TYPE=Debug
       - name: Build
         run: cmake --build build --parallel 3
       - name: Run instrumented tests
@@ -110,6 +136,60 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: ctest --test-dir build --output-on-failure --verbose --timeout 180
+      - name: Upload sanitizer logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sanitizer-logs
+          path: build/Testing/Temporary/
+          if-no-files-found: ignore
+
+  analysis:
+    name: Static analysis / evidence validator tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Install hosted analysis tools
+        run: sudo apt-get update && sudo apt-get install -y cppcheck python3-pil
+      - name: Analyze headless project code
+        run: cppcheck --enable=warning,performance,portability --error-exitcode=1 --std=c++20 --inline-suppr --suppress=missingIncludeSystem -Iinclude src/world.cpp src/simulation.cpp src/save.cpp
+      - name: Exercise evidence validators, including rejection paths
+        run: python3 -O -m unittest discover -s tests -p 'test_*.py' -v
+
+  renderer-sanitizers:
+    name: Renderer / ASan + UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Install graphics and audio headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev xvfb
+      - name: Configure instrumented desktop
+        run: cmake -S . -B build -DNB_BUILD_TESTS=OFF -DNB_SANITIZERS=ON -DNB_WARNINGS_AS_ERRORS=ON -DCMAKE_BUILD_TYPE=Debug
+      - name: Build instrumented desktop
+        run: cmake --build build --parallel 3
+      - name: Exercise graphics and overlay lifecycles under sanitizers
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          # Mesa/X11 retain process-global allocations; core leak checking remains enabled above.
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          mkdir -p artifacts
+          for scene in gameplay title map garage paused settings waypoint lifecycle; do
+            xvfb-run -a -s '-screen 0 1280x800x24' ./build/neon_borough --smoke-view "$scene" --frames 180 --screenshot "artifacts/$scene.png" > "artifacts/$scene.log" 2>&1
+          done
+          grep 'SMOKE_LIFECYCLE frame=120' artifacts/lifecycle.log
+      - name: Upload instrumented renderer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: instrumented-renderer-evidence
+          path: artifacts/
+          if-no-files-found: ignore
 
   style:
     name: C++ / remote formatting check
@@ -120,17 +200,28 @@ jobs:
       - name: Install hosted formatter
         run: sudo apt-get update && sudo apt-get install -y clang-format-18
       - name: Check source style
-        run: clang-format-18 --dry-run --Werror include/neon/*.hpp src/*.cpp tests/core_tests.cpp
+        run: clang-format-18 --dry-run --Werror include/neon/*.hpp src/*.cpp tests/*.cpp
 
   release:
     name: Publish tagged release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [desktop, sanitizers, style]
+    needs: [desktop, sanitizers, renderer-sanitizers, analysis, style]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Verify release tag matches the project version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          source = pathlib.Path('CMakeLists.txt').read_text()
+          version = re.search(r'project\(NeonBorough VERSION ([0-9.]+)', source).group(1)
+          if os.environ['RELEASE_TAG'] != 'v' + version:
+              raise SystemExit('Release tag must match the CMake project version')
+          PY
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: NeonBorough-*
@@ -146,4 +237,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release/* evidence/gameplay.png evidence/title.png evidence/map.png evidence/garage.png --repo "$GITHUB_REPOSITORY" --title "Neon Borough $GITHUB_REF_NAME" --notes-file CHANGELOG.md
+          gh release create "$GITHUB_REF_NAME" release/* evidence/gameplay.png evidence/title.png evidence/map.png evidence/garage.png evidence/paused.png evidence/settings.png evidence/waypoint.png --repo "$GITHUB_REPOSITORY" --title "Neon Borough $GITHUB_REF_NAME" --notes-file CHANGELOG.md

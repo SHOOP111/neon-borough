@@ -1,12 +1,16 @@
 #include "neon/save.hpp"
+#include <array>
+#include <charconv>
 #include <cstdlib>
 #include <fstream>
+#include <locale>
 #include <sstream>
 #include <system_error>
 
 namespace neon {
 namespace {
 std::uint64_t checksum(const std::string& data) {
+    // Preserve the v1 checksum algorithm for existing saves.
     std::uint64_t result = 1469598103934665603ULL;
     for (char c : data) {
         result ^= static_cast<unsigned char>(c);
@@ -14,26 +18,34 @@ std::uint64_t checksum(const std::string& data) {
     }
     return result;
 }
-bool valid(const Progress& p) {
-    if (p.cash < 0 || p.cash > 100000000 || p.completed < 0 || p.completed > 100000 || p.bestChain < 0 ||
-        p.bestChain > p.completed || p.engineLevel < 0 || p.engineLevel > 3 || p.armorLevel < 0 ||
-        p.armorLevel > 1)
+template <class T> bool readNumber(std::istream& in, T& value) {
+    std::string token;
+    if (!(in >> token))
         return false;
-    for (int rep : p.reputation)
-        if (rep < 0 || rep > p.completed)
-            return false;
-    return true;
+    auto [end, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
+    return ec == std::errc{} && end == token.data() + token.size();
 }
+bool unsafeTarget(const std::filesystem::path& path, std::error_code& ec) {
+    auto status = std::filesystem::symlink_status(path, ec);
+    if (ec == std::errc::no_such_file_or_directory) {
+        ec.clear();
+        return false;
+    }
+    return ec || (std::filesystem::exists(status) && !std::filesystem::is_regular_file(status));
+}
+struct TemporarySave {
+    std::filesystem::path path;
+    ~TemporarySave() {
+        std::error_code ignored;
+        std::filesystem::remove(path, ignored);
+    }
+};
 } // namespace
 SaveResult saveProgress(const std::filesystem::path& path, const Progress& p) {
-    if (!valid(p))
+    if (!validProgress(p))
         return {false, "Invalid progress; save not written."};
-    std::ostringstream body;
-    body << "NEON_BOROUGH 1\n"
-         << p.seed << ' ' << p.cash << ' ' << p.completed << ' ' << p.bestChain << ' ' << p.engineLevel << ' '
-         << p.armorLevel << ' ' << p.reputation[0] << ' ' << p.reputation[1] << ' ' << p.reputation[2]
-         << '\n';
-    std::string data = body.str();
+    if (path.empty() || path.filename().empty())
+        return {false, "Invalid save path."};
     std::error_code ec;
     if (!path.parent_path().empty())
         std::filesystem::create_directories(path.parent_path(), ec);
@@ -41,10 +53,24 @@ SaveResult saveProgress(const std::filesystem::path& path, const Progress& p) {
         return {false, "Cannot create save directory: " + ec.message()};
     auto temporary = path;
     temporary += ".tmp";
+    auto backup = path;
+    backup += ".bak";
+    for (const auto& target : {path, temporary, backup})
+        if (unsafeTarget(target, ec))
+            return {false, "Save target is inaccessible or is not a regular file."};
+    TemporarySave cleanup{temporary};
+    std::ostringstream body;
+    body.imbue(std::locale::classic());
+    body << "NEON_BOROUGH 1\n"
+         << p.seed << ' ' << p.cash << ' ' << p.completed << ' ' << p.bestChain << ' ' << p.engineLevel << ' '
+         << p.armorLevel << ' ' << p.reputation[0] << ' ' << p.reputation[1] << ' ' << p.reputation[2]
+         << '\n';
+    std::string data = body.str();
     {
         std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
         if (!file)
             return {false, "Cannot open temporary save file."};
+        file.imbue(std::locale::classic());
         file << data << checksum(data) << '\n';
         file.flush();
         if (!file)
@@ -53,21 +79,31 @@ SaveResult saveProgress(const std::filesystem::path& path, const Progress& p) {
         if (file.fail())
             return {false, "Cannot close save file."};
     }
-    // Keep a recoverable previous save. Windows rename cannot replace an existing file.
-    auto backup = path;
-    backup += ".bak";
+    bool rotated = false;
     if (std::filesystem::exists(path, ec)) {
-        std::filesystem::remove(backup, ec);
-        ec.clear();
-        std::filesystem::rename(path, backup, ec);
-        if (ec)
-            return {false, "Cannot rotate previous save: " + ec.message()};
+        // A damaged primary must never replace the last known-good backup.
+        if (loadProgress(path)) {
+            std::filesystem::remove(backup, ec);
+            if (ec)
+                return {false, "Cannot remove previous backup: " + ec.message()};
+            std::filesystem::rename(path, backup, ec);
+            if (ec)
+                return {false, "Cannot rotate previous save: " + ec.message()};
+            rotated = true;
+        } else {
+            std::filesystem::remove(path, ec);
+            if (ec)
+                return {false, "Cannot replace damaged save: " + ec.message()};
+        }
     }
+    if (ec)
+        return {false, "Cannot inspect previous save: " + ec.message()};
     std::filesystem::rename(temporary, path, ec);
     if (ec) {
-        std::error_code recovery;
-        if (std::filesystem::exists(backup, recovery))
+        if (rotated) {
+            std::error_code recovery;
             std::filesystem::rename(backup, path, recovery);
+        }
         return {false, "Cannot commit save: " + ec.message()};
     }
     return {true, "Progress saved."};
@@ -79,51 +115,91 @@ std::optional<Progress> loadProgress(const std::filesystem::path& path, std::str
         return std::nullopt;
     };
     std::error_code ec;
-    if (!std::filesystem::exists(path, ec))
+    bool exists = std::filesystem::exists(path, ec);
+    if (ec)
+        return fail("Save is inaccessible: " + ec.message());
+    if (!exists)
         return fail("No save found.");
-    auto size = std::filesystem::file_size(path, ec);
-    if (ec || size > 4096)
-        return fail("Save is unreadable or oversized.");
+    if (!std::filesystem::is_regular_file(path, ec) || ec)
+        return fail("Save is not a readable regular file.");
+    // Bound the actual read, not just a racy file_size query.
     std::ifstream file(path, std::ios::binary);
+    if (!file)
+        return fail("Cannot open save.");
+    std::array<char, 4097> buffer{};
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    if (file.bad() || file.gcount() > 4096)
+        return fail("Save is unreadable or oversized.");
+    std::istringstream lines(std::string(buffer.data(), static_cast<std::size_t>(file.gcount())));
     std::string header, payload, hashLine, extra;
-    if (!std::getline(file, header) || !std::getline(file, payload) || !std::getline(file, hashLine))
+    if (!std::getline(lines, header) || !std::getline(lines, payload) || !std::getline(lines, hashLine))
         return fail("Truncated save.");
-    if (std::getline(file, extra))
+    if (std::getline(lines, extra))
         return fail("Unexpected trailing save data.");
     if (header != "NEON_BOROUGH 1")
         return fail("Unsupported save version.");
     std::uint64_t stored{};
     std::istringstream hash(hashLine);
-    if (!(hash >> stored))
+    hash.imbue(std::locale::classic());
+    if (!readNumber(hash, stored))
         return fail("Malformed save checksum.");
     hash >> std::ws;
     if (!hash.eof() || stored != checksum(header + '\n' + payload + '\n'))
         return fail("Save checksum mismatch.");
     Progress p;
     std::istringstream in(payload);
-    if (!(in >> p.seed >> p.cash >> p.completed >> p.bestChain >> p.engineLevel >> p.armorLevel >>
-          p.reputation[0] >> p.reputation[1] >> p.reputation[2]))
+    in.imbue(std::locale::classic());
+    if (!readNumber(in, p.seed) || !readNumber(in, p.cash) || !readNumber(in, p.completed) ||
+        !readNumber(in, p.bestChain) || !readNumber(in, p.engineLevel) || !readNumber(in, p.armorLevel) ||
+        !readNumber(in, p.reputation[0]) || !readNumber(in, p.reputation[1]) ||
+        !readNumber(in, p.reputation[2]))
         return fail("Malformed progress.");
     in >> std::ws;
-    if (!in.eof() || !valid(p))
+    if (!in.eof() || !validProgress(p))
         return fail("Out-of-range save data.");
     if (error)
         error->clear();
     return p;
 }
+std::optional<Progress> recoverProgress(const std::filesystem::path& path, std::string* error) {
+    std::string primaryError;
+    if (auto p = loadProgress(path, &primaryError)) {
+        if (error)
+            error->clear();
+        return p;
+    }
+    auto backup = path;
+    backup += ".bak";
+    if (auto p = loadProgress(backup)) {
+        if (error)
+            *error = "Recovered the previous save backup.";
+        return p;
+    }
+    if (error)
+        *error = primaryError;
+    return std::nullopt;
+}
 std::filesystem::path defaultSavePath() {
+    auto environmentPath = [](const char* key) {
+        const char* value = std::getenv(key);
+        auto path = value && *value ? std::filesystem::path(value) : std::filesystem::path{};
+        return path.is_absolute() ? path : std::filesystem::path{};
+    };
 #ifdef _WIN32
-    if (const char* appdata = std::getenv("LOCALAPPDATA"))
-        return std::filesystem::path(appdata) / "NeonBorough" / "progress.sav";
+    auto root = environmentPath("LOCALAPPDATA");
+    if (!root.empty())
+        return root / "NeonBorough" / "progress.sav";
 #elif defined(__APPLE__)
-    if (const char* home = std::getenv("HOME"))
-        return std::filesystem::path(home) / "Library" / "Application Support" / "NeonBorough" /
-               "progress.sav";
+    auto root = environmentPath("HOME");
+    if (!root.empty())
+        return root / "Library" / "Application Support" / "NeonBorough" / "progress.sav";
 #else
-    if (const char* xdg = std::getenv("XDG_DATA_HOME"))
-        return std::filesystem::path(xdg) / "neon-borough" / "progress.sav";
-    if (const char* home = std::getenv("HOME"))
-        return std::filesystem::path(home) / ".local" / "share" / "neon-borough" / "progress.sav";
+    auto root = environmentPath("XDG_DATA_HOME");
+    if (!root.empty())
+        return root / "neon-borough" / "progress.sav";
+    root = environmentPath("HOME");
+    if (!root.empty())
+        return root / ".local" / "share" / "neon-borough" / "progress.sav";
 #endif
     return std::filesystem::path("neon-borough-progress.sav");
 }

@@ -24,7 +24,13 @@ Rewards scale with completed contracts. A capped chain bonus rewards consecutive
 
 Crimes increase fractional heat, capped at five. Displayed stars are rounded up above a small dead zone. Patrols spawn at road nodes outside the immediate view and follow shortest grid routes. Nearby visible suspects trigger direct pursuit. Higher heat permits passenger gunfire. Sight is determined by building occlusion, not just distance.
 
-Heat decays only after eight seconds without a visible patrol. Extraction contracts decay slightly faster to keep their deadline practical. A safehouse cannot clear wanted levels for free. There is no instant teleporting arrest mechanic; loss of health triggers medical recovery and a cash penalty.
+Heat decays only after eight seconds without a visible patrol. Extraction contracts decay slightly faster to keep their deadline practical. When heat clears, distant patrols leave and nearby patrols resume traffic rather than pursuing indefinitely. A safehouse cannot clear wanted levels for free. There is no instant teleporting arrest mechanic; loss of health triggers medical recovery and a cash penalty before contract completion can award a reward.
+
+## Navigation and services
+
+The full map pauses simulation and supports clicking a service or road waypoint. Routes prefer an active contract; free-roam waypoints resume afterward and clear on arrival. This is guidance along the connected street graph, not autonomous driving or shortest geometric navigation through alleys.
+
+Garages stay live. Purchases require proximity and eligibility: wrecks cannot be repaired, full supplies do not consume money, and engine tuning caps at level three. Cash and counters saturate at save-format limits so long-term progression remains loadable. Saves recover a known-good backup but are not a multiplayer/shared-writer database.
 
 ## Scope and limitations
 

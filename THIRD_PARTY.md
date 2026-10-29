@@ -6,6 +6,8 @@ Neon Borough's original source, procedural artwork, and synthesized audio are MI
 
 Pinned source revision: `c1ab645ca298a2801097931d1079b10ff7eb9df8`.
 
+Archive SHA-256: `be3443c3fb97f7cbd18ae3f0ea2a73e6c1486128df33b639dce7e44070fc285d` (verified on a GitHub-hosted runner). CMake checks the downloaded archive against this hash before extraction.
+
 Source: https://github.com/raysan5/raylib
 
 raylib is distributed under the zlib/libpng license. Its source distribution contains license notices for GLFW, miniaudio, stb utilities, and other bundled components. Those notices remain intact in the fetched source. The package installation also includes the upstream raylib license and GLFW license alongside this project's license.

@@ -41,26 +41,49 @@ City::City(std::uint64_t seedValue) : seed(seedValue) {
                 {{1712, 2436}, ServiceKind::Garage, "PITSTOP SOUTH", 3}};
 }
 bool City::isStreet(Vec2 p) const {
-    if (p.x < 0 || p.y < 0 || p.x >= citySize || p.y >= citySize)
+    if (!finite(p) || p.x < 0 || p.y < 0 || p.x >= citySize || p.y >= citySize)
         return false;
     return std::fmod(p.x, static_cast<float>(blockSize)) < streetWidth ||
            std::fmod(p.y, static_cast<float>(blockSize)) < streetWidth;
 }
 bool City::blocked(Vec2 p, float radius) const {
-    if (p.x < radius || p.y < radius || p.x > citySize - radius || p.y > citySize - radius)
+    if (!finite(p) || !std::isfinite(radius) || radius < 0 || p.x < radius || p.y < radius ||
+        p.x > citySize - radius || p.y > citySize - radius)
         return true;
     for (const auto& b : buildings)
         if (circleRect(p, radius + 0.01f, b.bounds))
             return true;
     return false;
 }
-bool City::lineOfSight(Vec2 a, Vec2 b) const {
+float City::obstruction(Vec2 a, Vec2 b) const {
+    if (!finite(a) || !finite(b))
+        return 0;
+    float first = std::numeric_limits<float>::infinity();
     for (const auto& building : buildings)
-        if (segmentRect(a, b, building.bounds))
-            return false;
-    return true;
+        first = std::min(first, segmentRectTime(a, b, building.bounds));
+    if (!Rect{0, 0, citySize, citySize}.contains(a))
+        return 0;
+    Vec2 delta = b - a;
+    if (b.x < 0)
+        first = std::min(first, -a.x / delta.x);
+    if (b.y < 0)
+        first = std::min(first, -a.y / delta.y);
+    if (b.x > citySize)
+        first = std::min(first, (citySize - a.x) / delta.x);
+    if (b.y > citySize)
+        first = std::min(first, (citySize - a.y) / delta.y);
+    return first;
+}
+bool City::lineOfSight(Vec2 a, Vec2 b) const {
+    return !std::isfinite(obstruction(a, b));
 }
 Vec2 City::moveCircle(Vec2 p, Vec2 delta, float radius, bool* collided) const {
+    if (!finite(p) || !finite(delta) || !std::isfinite(radius) || radius < 0 ||
+        length(delta) > citySize * 2) {
+        if (collided)
+            *collided = true;
+        return p;
+    }
     int steps = std::max(1, static_cast<int>(std::ceil(length(delta) / 6.0f)));
     Vec2 step = delta / static_cast<float>(steps);
     bool hit = false;
@@ -86,12 +109,18 @@ Vec2 City::node(int index) const {
             static_cast<float>((index / cityBlocks) * blockSize) + 64};
 }
 int City::nearestNode(Vec2 p) const {
+    if (!finite(p))
+        return 0;
+    p.x = std::clamp(p.x, 0.0f, citySize);
+    p.y = std::clamp(p.y, 0.0f, citySize);
     int x = std::clamp(static_cast<int>(std::lround((p.x - 64) / blockSize)), 0, cityBlocks - 1);
     int y = std::clamp(static_cast<int>(std::lround((p.y - 64) / blockSize)), 0, cityBlocks - 1);
     return y * cityBlocks + x;
 }
 std::vector<int> City::neighbors(int index) const {
     std::vector<int> out;
+    if (index < 0 || index >= cityBlocks * cityBlocks)
+        return out;
     int x = index % cityBlocks, y = index / cityBlocks;
     if (x > 0)
         out.push_back(index - 1);

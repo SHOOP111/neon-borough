@@ -9,12 +9,6 @@ constexpr int maxVehicles = 96;
 Vec2 rightOf(Vec2 directionValue) {
     return {-directionValue.y, directionValue.x};
 }
-bool segmentCircle(Vec2 a, Vec2 b, Vec2 p, float r) {
-    Vec2 d = b - a;
-    float d2 = dot(d, d);
-    float t = d2 > 0 ? std::clamp(dot(p - a, d) / d2, 0.0f, 1.0f) : 0;
-    return distance(a + d * t, p) < r;
-}
 Vec2 sidewalkCorner(int block, int corner) {
     float x = static_cast<float>((block % cityBlocks) * blockSize) + 136;
     float y = static_cast<float>((block / cityBlocks) * blockSize) + 136;
@@ -88,10 +82,16 @@ int Simulation::wanted() const {
     return heat < 0.15f ? 0 : std::min(5, static_cast<int>(std::ceil(heat)));
 }
 void Simulation::crime(float severity) {
+    if (!std::isfinite(severity) || severity <= 0)
+        return;
     heat = std::clamp(heat + severity, 0.0f, 5.0f);
     unseen = 0;
 }
 int Simulation::spawnVehicle(Vec2 position, VehicleKind kind, int driver) {
+    if (city.blocked(position, 19) || nextVehicleId_ == std::numeric_limits<int>::max() ||
+        (vehicles.size() >= maxVehicles &&
+         std::none_of(vehicles.begin(), vehicles.end(), [](const Vehicle& v) { return !v.active; })))
+        return -1;
     Vehicle v;
     v.id = nextVehicleId_++;
     v.position = position;
@@ -112,31 +112,68 @@ int Simulation::spawnVehicle(Vec2 position, VehicleKind kind, int driver) {
     return v.id;
 }
 void Simulation::tick(const Input& input, float dt) {
-    if (!std::isfinite(dt) || dt <= 0 || dt > 0.1f)
+    if (!std::isfinite(dt) || dt <= 0 || dt > 0.1f || !finite(input.movement) || !finite(input.aim) ||
+        !std::isfinite(input.throttle) || !std::isfinite(input.steering))
         return;
+    Input safe = input;
+    safe.throttle = std::clamp(safe.throttle, -1.0f, 1.0f);
+    safe.steering = std::clamp(safe.steering, -1.0f, 1.0f);
     events.clear();
     time += dt;
     trauma = approach(trauma, 0, dt * 1.8f);
     missionCooldown = std::max(0.0f, missionCooldown - dt);
     player.invulnerable = std::max(0.0f, player.invulnerable - dt);
     honkTimer_ = std::max(0.0f, honkTimer_ - dt);
-    if (input.shopChoice)
-        purchase(input.shopChoice);
-    updatePlayer(input, dt);
-    updateVehicles(input, dt);
+    if (garageOpen && !nearGarage())
+        garageOpen = false;
+    if (player.health <= 0) {
+        defeat();
+        return;
+    }
+    if (safe.shopChoice)
+        purchase(safe.shopChoice);
+    updatePlayer(safe, dt);
+    updatePolice(dt);
+    updateVehicles(safe, dt);
     updatePedestrians(dt);
     updateBullets(dt);
-    updatePolice(dt);
-    updateMission(dt);
+    wreckVehicles();
     if (player.health <= 0)
         defeat();
+    else
+        updateMission(dt);
     populationTimer_ += dt;
     if (populationTimer_ > 8) {
         populationTimer_ = 0;
         // Recycle destroyed vehicles only after their wreck has been visible for a while.
         for (auto& car : vehicles)
-            if (car.active && car.health <= 0 && distance(car.position, playerPosition()) > 700)
+            if (car.active && (car.health <= 0 || car.retired) && car.id != player.vehicle &&
+                distance(car.position, playerPosition()) > 700)
                 car.active = false;
+        int traffic = static_cast<int>(std::count_if(vehicles.begin(), vehicles.end(), [](const Vehicle& v) {
+            return v.active && v.health > 0 && v.driver == -1;
+        }));
+        for (int attempt = 0; traffic < 48 && attempt < 64; ++attempt) {
+            int n = rng_.integer(0, cityBlocks * cityBlocks - 1);
+            auto options = city.neighbors(n);
+            int next =
+                options[static_cast<std::size_t>(rng_.integer(0, static_cast<int>(options.size()) - 1))];
+            Vec2 dir = normalized(city.node(next) - city.node(n));
+            Vec2 pos = city.node(n) + dir * 130 + rightOf(dir) * 22;
+            if (distance(pos, playerPosition()) < 700 ||
+                std::any_of(vehicles.begin(), vehicles.end(),
+                            [pos](const Vehicle& v) { return v.active && distance(v.position, pos) < 60; }))
+                continue;
+            int id = spawnVehicle(pos, static_cast<VehicleKind>(rng_.integer(0, 2)), -1);
+            if (auto* car = vehicle(id)) {
+                car->nodeFrom = n;
+                car->nodeTo = next;
+                car->heading = angle(dir);
+                car->velocity = dir * 80;
+                ++traffic;
+            } else
+                break;
+        }
     }
 }
 void Simulation::updatePlayer(const Input& in, float dt) {
@@ -201,7 +238,8 @@ void Simulation::updatePlayer(const Input& in, float dt) {
         --player.ammo;
         player.shotTimer = 0.18f;
         Vec2 dir = direction(angle(player.aim) + rng_.range(-0.035f, 0.035f));
-        addBullet(playerPosition() + dir * (player.vehicle == -1 ? 14.0f : 26.0f), dir, false);
+        addBullet(playerPosition() + dir * (player.vehicle == -1 ? 14.0f : 26.0f), dir, false,
+                  player.vehicle);
         crime(0.18f);
         trauma = std::max(trauma, 0.08f);
     }
@@ -216,16 +254,11 @@ void Simulation::updatePlayer(const Input& in, float dt) {
             if (distance(p.position, playerPosition()) < 150)
                 p.panic = 2;
     }
-    if (garageOpen) {
-        bool nearby = false;
-        for (const auto& s : city.services)
-            if (s.kind == ServiceKind::Garage && distance(s.position, playerPosition()) < 100)
-                nearby = true;
-        if (!nearby)
-            garageOpen = false;
-    }
+    if (garageOpen && !nearGarage())
+        garageOpen = false;
 }
 void Simulation::drive(Vehicle& car, float throttle, float steer, bool handbrake, float dt) {
+    const float previousHeading = car.heading;
     Vec2 forward = direction(car.heading), side = rightOf(forward);
     float longitudinal = dot(car.velocity, forward), lateral = dot(car.velocity, side);
     float engine = car.driver == 0 ? 1.0f + 0.12f * static_cast<float>(progress.engineLevel) : 1.0f;
@@ -255,6 +288,7 @@ void Simulation::drive(Vehicle& car, float throttle, float steer, bool handbrake
     if (city.blocked(car.position + direction(car.heading) * 12, 10) ||
         city.blocked(car.position - direction(car.heading) * 12, 10)) {
         car.position = previous;
+        car.heading = previousHeading;
         hit = true;
     }
     if (hit) {
@@ -321,18 +355,21 @@ void Simulation::updateVehicles(const Input& in, float dt) {
                         desired = std::min(desired, length(other.velocity) * 0.8f);
                 }
             }
+        bool waitingForLight = false;
         if (car.driver == -1) {
             // Alternating right of way at intersections; never stops cars in the middle.
             Vec2 n = city.node(car.nodeTo);
             float d = distance(car.position, n);
             bool vertical = std::abs(std::sin(car.heading)) > 0.7f;
-            bool green = (static_cast<int>(time / 7) % 2 == 0) == vertical;
-            if (!green && d > 62 && d < 112)
+            bool green = (static_cast<int>(std::fmod(time / 7, 2.0f)) == 0) == vertical;
+            if (!green && d > 62 && d < 112) {
                 desired = 0;
+                waitingForLight = true;
+            }
         }
         float speed = dot(car.velocity, direction(car.heading));
         float throttle = std::clamp((desired - speed) * 0.045f, -1.0f, 1.0f);
-        if (length(car.velocity) < 8)
+        if (length(car.velocity) < 8 && !waitingForLight)
             car.stuckTimer += dt;
         else
             car.stuckTimer = 0;
@@ -351,7 +388,7 @@ void Simulation::updateVehicles(const Input& in, float dt) {
             distance(car.position, playerPosition()) < 230 &&
             city.lineOfSight(car.position, playerPosition())) {
             Vec2 dir = direction(angle(playerPosition() - car.position) + rng_.range(-0.16f, 0.16f));
-            addBullet(car.position + dir * 30, dir, true);
+            addBullet(car.position + dir * 30, dir, true, car.id);
             car.fireTimer = rng_.range(0.7f, 1.3f);
         }
     }
@@ -384,6 +421,9 @@ void Simulation::updateVehicles(const Input& in, float dt) {
                 }
             }
         }
+    wreckVehicles();
+}
+void Simulation::wreckVehicles() {
     for (auto& car : vehicles)
         if (car.active && car.health <= 0 && car.health > -999) {
             car.health = -1000;
@@ -443,53 +483,71 @@ void Simulation::updatePedestrians(float dt) {
             }
     }
 }
-void Simulation::addBullet(Vec2 pos, Vec2 dir, bool hostile) {
+void Simulation::addBullet(Vec2 pos, Vec2 dir, bool hostile, int sourceVehicle) {
     if (bullets.size() < 128)
-        bullets.push_back({pos, pos, dir * (hostile ? 600.0f : 850.0f), 1.2f, hostile});
+        bullets.push_back({pos, pos, dir * (hostile ? 600.0f : 850.0f), 1.2f, hostile, sourceVehicle});
     events.push_back({EventKind::Shot, pos, "", hostile ? 0.0f : 1.0f});
 }
 void Simulation::updateBullets(float dt) {
     for (auto& b : bullets) {
         b.previous = b.position;
-        b.position += b.velocity * dt;
+        Vec2 end = b.position + b.velocity * dt;
         b.life -= dt;
-        bool hit = !city.lineOfSight(b.previous, b.position) || b.position.x < 0 || b.position.y < 0 ||
-                   b.position.x > citySize || b.position.y > citySize;
-        if (!hit && b.hostile && player.invulnerable == 0 &&
-            segmentCircle(b.previous, b.position, playerPosition(), player.vehicle == -1 ? 10.0f : 22.0f)) {
-            if (auto* car = vehicle(player.vehicle))
-                car->health -= 4;
-            else {
-                float damage = 8;
-                float absorbed = std::min(player.armor, damage * 0.75f);
-                player.armor -= absorbed;
-                player.health -= damage - absorbed;
+        float first = city.obstruction(b.previous, end);
+        Vehicle* hitCar = nullptr;
+        Pedestrian* hitPed = nullptr;
+        bool hitPlayer = false;
+        for (auto& car : vehicles) {
+            if (!car.active || car.health <= 0 || car.id == b.sourceVehicle ||
+                (!b.hostile && car.id == player.vehicle))
+                continue;
+            float t = segmentCircleTime(b.previous, end, car.position, 21);
+            if (t < first) {
+                first = t;
+                hitCar = &car;
             }
+        }
+        if (b.hostile && player.vehicle == -1) {
+            float t = segmentCircleTime(b.previous, end, player.position, 10);
+            if (t < first) {
+                first = t;
+                hitCar = nullptr;
+                hitPlayer = true;
+            }
+        } else if (!b.hostile) {
+            for (auto& p : pedestrians) {
+                if (p.health <= 0)
+                    continue;
+                float t = segmentCircleTime(b.previous, end, p.position, 8);
+                if (t < first) {
+                    first = t;
+                    hitCar = nullptr;
+                    hitPed = &p;
+                }
+            }
+        }
+        b.position = std::isfinite(first) ? lerp(b.previous, end, first) : end;
+        if (hitCar) {
+            if (!b.hostile || hitCar->id != player.vehicle || player.invulnerable == 0)
+                hitCar->health -= b.hostile ? 4.0f : 18.0f;
+            if (!b.hostile && hitCar->kind == VehicleKind::Police)
+                crime(0.35f);
+            if (b.hostile && hitCar->id == player.vehicle) {
+                player.invulnerable = std::max(player.invulnerable, 0.12f);
+                trauma = std::max(trauma, 0.2f);
+            }
+        } else if (hitPlayer && player.invulnerable == 0) {
+            float absorbed = std::min(player.armor, 6.0f);
+            player.armor -= absorbed;
+            player.health -= 8 - absorbed;
             player.invulnerable = 0.12f;
             trauma = std::max(trauma, 0.2f);
-            hit = true;
+        } else if (hitPed) {
+            hitPed->health -= 55;
+            hitPed->panic = 8;
+            crime(0.5f);
         }
-        if (!hit && !b.hostile) {
-            for (auto& car : vehicles)
-                if (car.active && car.health > 0 && car.id != player.vehicle &&
-                    segmentCircle(b.previous, b.position, car.position, 21)) {
-                    car.health -= 18;
-                    hit = true;
-                    if (car.kind == VehicleKind::Police)
-                        crime(0.35f);
-                    break;
-                }
-            if (!hit)
-                for (auto& p : pedestrians)
-                    if (p.health > 0 && segmentCircle(b.previous, b.position, p.position, 8)) {
-                        p.health -= 55;
-                        p.panic = 8;
-                        hit = true;
-                        crime(0.5f);
-                        break;
-                    }
-        }
-        if (hit) {
+        if (std::isfinite(first)) {
             b.life = 0;
             events.push_back({EventKind::Impact, b.position, "", 12});
         }
@@ -503,12 +561,18 @@ void Simulation::updatePolice(float dt) {
         if (v.active && v.driver == 1 && v.health > 0) {
             ++cops;
             float d = distance(v.position, playerPosition());
-            if (d < 480 && city.lineOfSight(v.position, playerPosition()))
-                seen = true;
-            if (wanted() == 0 && d > 550) {
-                v.active = false;
+            if (wanted() == 0) {
+                if (d > 550)
+                    v.active = false;
+                else {
+                    v.driver = -1;
+                    v.nodeFrom = city.nearestNode(v.position);
+                    v.nodeTo = city.neighbors(v.nodeFrom).front();
+                    v.stuckTimer = 0;
+                }
                 --cops;
-            }
+            } else if (d < 480 && city.lineOfSight(v.position, playerPosition()))
+                seen = true;
         }
     unseen = seen ? 0 : unseen + dt;
     if (heat > 0 && unseen > 8)
@@ -526,7 +590,12 @@ void Simulation::updatePolice(float dt) {
         if (!candidates.empty()) {
             int n = candidates[static_cast<std::size_t>(
                 rng_.integer(0, static_cast<int>(candidates.size()) - 1))];
-            int id = spawnVehicle(city.node(n) + Vec2{22, 0}, VehicleKind::Police, 1);
+            Vec2 spawn = city.node(n) + Vec2{22, 0};
+            if (std::any_of(vehicles.begin(), vehicles.end(), [spawn](const Vehicle& v) {
+                    return v.active && distance(v.position, spawn) < 60;
+                }))
+                return;
+            int id = spawnVehicle(spawn, VehicleKind::Police, 1);
             if (auto* car = vehicle(id)) {
                 auto path = city.route(car->position, playerPosition());
                 car->nodeFrom = n;
@@ -546,6 +615,10 @@ Vec2 Simulation::deliveryPoint() {
     return city.services.back().position + Vec2{0, -30};
 }
 void Simulation::startMission(int contactIndex) {
+    if (contactIndex < 0 || contactIndex >= 6) {
+        notice("Invalid contact.");
+        return;
+    }
     if (mission.active || missionCooldown > 0) {
         notice("Finish the current contract first, or wait for the next dispatch.");
         return;
@@ -639,23 +712,33 @@ void Simulation::updateMission(float dt) {
     }
 }
 void Simulation::finishMission() {
-    if (!mission.active)
+    if (!mission.active || player.health <= 0)
         return;
-    ++chain;
-    ++progress.completed;
-    progress.bestChain = std::max(progress.bestChain, chain);
-    ++progress.reputation[static_cast<std::size_t>(mission.kind)];
+    chain = std::min(chain + 1, maxCompleted);
+    if (progress.completed < maxCompleted) {
+        ++progress.completed;
+        ++progress.reputation[static_cast<std::size_t>(mission.kind)];
+    }
+    progress.bestChain = std::max(progress.bestChain, std::min(chain, progress.completed));
     int bonus = std::min(chain - 1, 5) * 150;
-    player.cash += mission.reward + bonus;
-    events.push_back({EventKind::Reward, playerPosition(),
-                      "CONTRACT COMPLETE // +$" + std::to_string(mission.reward + bonus), 1});
+    int earned = std::min(mission.reward + bonus, maxCash - player.cash);
+    player.cash += earned;
+    events.push_back(
+        {EventKind::Reward, playerPosition(), "CONTRACT COMPLETE // +$" + std::to_string(earned), 1});
+    retireMissionTarget();
     mission.active = false;
     missionCooldown = 3;
     ++saveRevision;
 }
+void Simulation::retireMissionTarget() {
+    if (mission.kind == MissionKind::Acquisition)
+        if (auto* car = vehicle(mission.targetVehicle))
+            car->retired = true;
+}
 void Simulation::failMission(const std::string& reason) {
     if (!mission.active)
         return;
+    retireMissionTarget();
     mission.active = false;
     chain = 0;
     missionCooldown = 5;
@@ -697,8 +780,13 @@ void Simulation::interact() {
         }
     }
 }
+bool Simulation::nearGarage() const {
+    return std::any_of(city.services.begin(), city.services.end(), [this](const Service& s) {
+        return s.kind == ServiceKind::Garage && distance(s.position, playerPosition()) < 100;
+    });
+}
 void Simulation::purchase(int choice) {
-    if (!garageOpen)
+    if (!garageOpen || !nearGarage())
         return;
     int cost = choice == 1   ? 150
                : choice == 2 ? 250
@@ -707,11 +795,16 @@ void Simulation::purchase(int choice) {
                              : 0;
     if (cost == 0)
         return;
-    if (choice == 1 && !vehicle(player.vehicle)) {
+    if (choice == 1 && (!vehicle(player.vehicle) || vehicle(player.vehicle)->health <= 0)) {
         notice("Bring a vehicle for repairs.");
         return;
     }
-    if (choice == 3 && progress.engineLevel >= 3) {
+    if ((choice == 1 && vehicle(player.vehicle)->health >= 100) || (choice == 2 && player.armor >= 100) ||
+        (choice == 4 && player.reserve >= maxReserve)) {
+        notice("Already full. No purchase needed.");
+        return;
+    }
+    if (choice == 3 && progress.engineLevel >= maxEngineLevel) {
         notice("Engine tuning already maxed.");
         return;
     }
@@ -729,7 +822,7 @@ void Simulation::purchase(int choice) {
     if (choice == 3)
         ++progress.engineLevel;
     if (choice == 4)
-        player.reserve = std::min(240, player.reserve + 64);
+        player.reserve = std::min(maxReserve, player.reserve + 64);
     ++saveRevision;
     notice("Upgrade installed // -$" + std::to_string(cost));
 }
@@ -745,6 +838,8 @@ void Simulation::defeat() {
     player.reserve = std::max(32, player.reserve);
     player.cash = std::max(0, player.cash - 350);
     player.invulnerable = 3;
+    player.reloadTimer = player.shotTimer = 0;
+    player.stamina = 100;
     heat = 0;
     unseen = 0;
     garageOpen = false;
@@ -761,10 +856,13 @@ Progress Simulation::snapshot() const {
     p.cash = player.cash;
     return p;
 }
-void Simulation::applyProgress(const Progress& p) {
+bool Simulation::applyProgress(const Progress& p) {
+    if (!validProgress(p) || p.seed != city.seed)
+        return false;
     progress = p;
     player.cash = p.cash;
     player.armor = p.armorLevel ? 100.0f : 0.0f;
+    return true;
 }
 std::uint64_t Simulation::digest() const {
     std::uint64_t h = 1469598103934665603ULL;
@@ -773,26 +871,106 @@ std::uint64_t Simulation::digest() const {
         h *= 1099511628211ULL;
     };
     auto scalar = [&mix](float v) { mix(std::bit_cast<std::uint32_t>(v)); };
+    auto vector = [&scalar](Vec2 v) {
+        scalar(v.x);
+        scalar(v.y);
+    };
+    auto integer = [&mix](int v) { mix(static_cast<std::uint64_t>(v)); };
+    auto string = [&mix](const std::string& v) {
+        mix(v.size());
+        for (char c : v)
+            mix(static_cast<unsigned char>(c));
+    };
+    mix(city.seed);
     mix(rng_.state());
+    integer(nextVehicleId_);
+    scalar(policeTimer_);
+    scalar(populationTimer_);
+    scalar(honkTimer_);
     scalar(time);
     scalar(heat);
+    scalar(unseen);
+    scalar(trauma);
+    scalar(missionCooldown);
+    integer(chain);
+    integer(saveRevision);
+    mix(garageOpen);
+    vector(player.position);
+    vector(player.aim);
     scalar(player.health);
-    mix(static_cast<std::uint64_t>(player.cash));
-    scalar(playerPosition().x);
-    scalar(playerPosition().y);
-    mix(static_cast<std::uint64_t>(player.vehicle));
-    for (const auto& v : vehicles)
-        if (v.active) {
-            mix(static_cast<std::uint64_t>(v.id));
-            scalar(v.position.x);
-            scalar(v.position.y);
-            scalar(v.heading);
-            scalar(v.health);
-        }
+    scalar(player.armor);
+    scalar(player.stamina);
+    scalar(player.shotTimer);
+    scalar(player.reloadTimer);
+    scalar(player.invulnerable);
+    integer(player.vehicle);
+    integer(player.cash);
+    integer(player.ammo);
+    integer(player.reserve);
+    mix(progress.seed);
+    integer(progress.cash);
+    integer(progress.completed);
+    integer(progress.bestChain);
+    integer(progress.engineLevel);
+    integer(progress.armorLevel);
+    for (int rep : progress.reputation)
+        integer(rep);
+    mix(mission.active);
+    integer(static_cast<int>(mission.kind));
+    integer(mission.stage);
+    integer(mission.targetVehicle);
+    integer(mission.deliveries);
+    vector(mission.target);
+    scalar(mission.timeLeft);
+    scalar(mission.hold);
+    integer(mission.reward);
+    string(mission.title);
+    string(mission.objective);
+    mix(vehicles.size());
+    for (const auto& v : vehicles) {
+        integer(v.id);
+        integer(static_cast<int>(v.kind));
+        vector(v.position);
+        vector(v.velocity);
+        scalar(v.heading);
+        scalar(v.health);
+        scalar(v.aiTimer);
+        scalar(v.fireTimer);
+        scalar(v.stuckTimer);
+        integer(v.color);
+        integer(v.nodeFrom);
+        integer(v.nodeTo);
+        integer(v.driver);
+        mix(v.active);
+        mix(v.retired);
+    }
+    mix(pedestrians.size());
     for (const auto& p : pedestrians) {
-        scalar(p.position.x);
-        scalar(p.position.y);
+        vector(p.position);
+        vector(p.target);
+        scalar(p.heading);
+        scalar(p.panic);
         scalar(p.health);
+        scalar(p.wait);
+        integer(p.color);
+        integer(p.corner);
+        integer(p.nextCorner);
+    }
+    mix(bullets.size());
+    for (const auto& b : bullets) {
+        vector(b.position);
+        vector(b.previous);
+        vector(b.velocity);
+        scalar(b.life);
+        mix(b.hostile);
+        integer(b.sourceVehicle);
+    }
+    mix(events.size());
+    for (const auto& e : events) {
+        integer(static_cast<int>(e.kind));
+        vector(e.position);
+        string(e.text);
+        scalar(e.value);
     }
     return h;
 }

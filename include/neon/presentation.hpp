@@ -3,14 +3,19 @@
 #include "raylib.h"
 #include <array>
 #include <deque>
+#include <optional>
 
 namespace neon {
 enum class Screen { Title, Playing, Paused, Settings };
 struct ViewState {
     Screen screen{Screen::Title};
-    bool map{}, rain{true}, effects{true}, audio{true}, fullscreen{}, showHelp{true};
+    bool map{}, rain{true}, effects{true}, audio{true}, fullscreen{}, showHelp{true}, waypointSet{};
+    Vec2 waypoint{};
     float volume{0.65f};
+    int menuSelection{};
 };
+Rect mapBounds(float width, float height, bool full);
+std::optional<Vec2> navigationTarget(const Simulation& sim, const ViewState& view);
 struct Particle {
     Vec2 position{}, velocity{};
     float life{}, maximum{}, size{};
@@ -35,11 +40,12 @@ class Presentation {
     std::deque<Toast> toasts_;
     std::deque<SkidMark> skids_;
     float clock_{}, zoom_{1};
+    bool shaderReady_{};
     void resize();
-    void drawCity(const Simulation& sim, Rect visible);
+    void drawCity(const Simulation& sim, const ViewState& view, Rect visible);
     void drawActors(const Simulation& sim, Rect visible);
     void drawHud(const Simulation& sim, const ViewState& view);
-    void drawMap(const Simulation& sim, bool full);
+    void drawMap(const Simulation& sim, const ViewState& view, bool full);
     void drawMenu(const Simulation& sim, const ViewState& view);
 
   public:
@@ -47,14 +53,15 @@ class Presentation {
     ~Presentation();
     Presentation(const Presentation&) = delete;
     Presentation& operator=(const Presentation&) = delete;
+    bool ready() const { return scene_.id != 0 && shaderReady_; }
     Vec2 worldMouse() const;
     void ingest(const std::vector<Event>& events);
     void message(const std::string& text, bool reward = false);
     void render(const Simulation& sim, const ViewState& view, float dt);
 };
 class Audio {
-    bool ready_{};
-    std::array<Sound, 6> sounds_{};
+    bool ready_{}, deviceReady_{};
+    std::array<Sound, 5> sounds_{};
     AudioStream music_{};
     double musicClock_{};
     float enginePhase_{}, lastShot_{};
@@ -67,7 +74,7 @@ class Audio {
     Audio(const Audio&) = delete;
     Audio& operator=(const Audio&) = delete;
     bool ready() const { return ready_; }
-    void ingest(const std::vector<Event>& events, float volume);
+    void ingest(const std::vector<Event>& events);
     void update(const Simulation& sim, const ViewState& view, float dt);
 };
 } // namespace neon

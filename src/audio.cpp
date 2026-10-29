@@ -35,25 +35,31 @@ Sound Audio::makeSound(int kind) {
 }
 Audio::Audio() {
     InitAudioDevice();
-    ready_ = IsAudioDeviceReady();
-    if (!ready_)
+    deviceReady_ = IsAudioDeviceReady();
+    if (!deviceReady_)
         return;
     for (int i = 0; i < 5; ++i)
         sounds_[static_cast<std::size_t>(i)] = makeSound(i);
     SetAudioStreamBufferSizeDefault(1024);
     music_ = LoadAudioStream(22050, 32, 1);
-    PlayAudioStream(music_);
+    ready_ = IsAudioStreamValid(music_) &&
+             std::all_of(sounds_.begin(), sounds_.end(), [](Sound sound) { return IsSoundValid(sound); });
+    if (ready_)
+        PlayAudioStream(music_);
 }
 Audio::~Audio() {
-    if (!ready_)
+    if (!deviceReady_)
         return;
-    StopAudioStream(music_);
-    UnloadAudioStream(music_);
-    for (int i = 0; i < 5; ++i)
-        UnloadSound(sounds_[static_cast<std::size_t>(i)]);
+    if (IsAudioStreamValid(music_)) {
+        StopAudioStream(music_);
+        UnloadAudioStream(music_);
+    }
+    for (Sound sound : sounds_)
+        if (IsSoundValid(sound))
+            UnloadSound(sound);
     CloseAudioDevice();
 }
-void Audio::ingest(const std::vector<Event>& events, float volume) {
+void Audio::ingest(const std::vector<Event>& events) {
     if (!ready_)
         return;
     for (const auto& event : events) {
@@ -68,7 +74,7 @@ void Audio::ingest(const std::vector<Event>& events, float volume) {
         if (index == 0 && lastShot_ > 0)
             continue;
         float level = index == 2 ? 0.65f : index == 1 ? 0.35f : 0.5f;
-        SetSoundVolume(sounds_[static_cast<std::size_t>(index)], volume * level);
+        SetSoundVolume(sounds_[static_cast<std::size_t>(index)], level);
         PlaySound(sounds_[static_cast<std::size_t>(index)]);
         if (index == 0)
             lastShot_ = 0.06f;
@@ -78,7 +84,8 @@ void Audio::update(const Simulation& sim, const ViewState& view, float dt) {
     if (!ready_)
         return;
     lastShot_ = std::max(0.0f, lastShot_ - dt);
-    SetAudioStreamVolume(music_, view.audio ? view.volume * 0.46f : 0);
+    SetMasterVolume(view.audio ? std::clamp(view.volume, 0.0f, 1.0f) : 0);
+    SetAudioStreamVolume(music_, 0.46f);
     float speed = 0;
     if (const auto* car = sim.vehicle(sim.player.vehicle))
         speed = length(car->velocity);
@@ -93,7 +100,7 @@ void Audio::update(const Simulation& sim, const ViewState& view, float dt) {
         constexpr double bass[]{65.406, 65.406, 77.782, 58.270, 65.406, 87.307, 77.782, 58.270};
         for (float& sample : samples_) {
             double t = musicClock_, phase = std::fmod(t, beat), step = std::fmod(t, beat / 2);
-            int note = static_cast<int>(t / beat) % 8;
+            int note = static_cast<int>(std::fmod(t / beat, 8.0));
             double f = bass[note];
             double pad = std::sin(t * 2 * pi * f * 4) * 0.045 + std::sin(t * 2 * pi * f * 6) * 0.025;
             double synth = (std::sin(t * 2 * pi * f) + std::sin(t * 2 * pi * f * 2) * 0.28) *
@@ -104,10 +111,12 @@ void Audio::update(const Simulation& sim, const ViewState& view, float dt) {
                 std::sin(t * 2 * pi * 8731) * std::sin(t * 2 * pi * 6203) * std::exp(-step * 70) * 0.06;
             enginePhase_ =
                 std::fmod(enginePhase_ + 2 * pi * (38 + speed * 0.32f) / static_cast<float>(rate), 2 * pi);
-            double engine = sim.player.vehicle == -1
+            double engine = sim.player.vehicle == -1 || view.screen != Screen::Playing || view.map
                                 ? 0
                                 : (std::sin(enginePhase_) + 0.3 * std::sin(enginePhase_ * 2)) * 0.12;
-            double police = siren ? std::sin(t * 2 * pi * (680 + 130 * std::sin(t * 2.8))) * 0.055 : 0;
+            double police = siren && view.screen == Screen::Playing && !view.map
+                                ? std::sin(t * 2 * pi * (680 + 130 * std::sin(t * 2.8))) * 0.055
+                                : 0;
             sample = static_cast<float>(std::clamp(pad + synth + kick + hat + engine + police, -0.8, 0.8));
             musicClock_ += 1 / rate;
         }
