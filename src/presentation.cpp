@@ -98,6 +98,16 @@ void main() {
 }
 )GLSL";
 } // namespace
+Rect mapBounds(float width, float height, bool full) {
+    float size = full ? std::min(height - 140, width - 180) : 184;
+    return full ? Rect{(width - size) / 2, (height - size) / 2, size, size}
+                : Rect{24, height - 224, size, size};
+}
+std::optional<Vec2> navigationTarget(const Simulation& sim, const ViewState& view) {
+    if (sim.mission.active) return sim.mission.target;
+    if (view.waypointSet) return view.waypoint;
+    return std::nullopt;
+}
 Presentation::Presentation() {
     camera_.target = {176, 100};
     camera_.zoom = 1;
@@ -105,6 +115,8 @@ Presentation::Presentation() {
     resolutionLocation_ = GetShaderLocation(post_, "resolution");
     timeLocation_ = GetShaderLocation(post_, "clock");
     strengthLocation_ = GetShaderLocation(post_, "strength");
+    shaderReady_ = IsShaderValid(post_) && resolutionLocation_ >= 0 && timeLocation_ >= 0 &&
+                   strengthLocation_ >= 0;
     resize();
     particles_.reserve(1600);
 }
@@ -160,7 +172,7 @@ void Presentation::ingest(const std::vector<Event>& events) {
         }
     }
 }
-void Presentation::drawCity(const Simulation& sim, Rect visible) {
+void Presentation::drawCity(const Simulation& sim, const ViewState& view, Rect visible) {
     const City& city = sim.city;
     box({0, 0, citySize, citySize}, {26, 36, 47, 255});
     // Street ribbons and raised sidewalk curbs.
@@ -199,15 +211,15 @@ void Presentation::drawCity(const Simulation& sim, Rect visible) {
                 box({px + step, py + 113, 7, 12}, {118, 129, 132, 255});
                 box({px + 113, py + step, 12, 7}, {118, 129, 132, 255});
             }
-            bool green = static_cast<int>(sim.time / 7) % 2 == 0;
+            bool green = static_cast<int>(std::fmod(sim.time / 7, 2.0f)) == 0;
             box({px + 125, py + 118, 4, 13}, {7, 12, 18, 255});
             DrawCircle(static_cast<int>(px + 127), static_cast<int>(py + 120), 2, green ? pink : cyan);
             glow({px + 132, py + 132}, 55, gold, 0.1f);
             DrawCircle(static_cast<int>(px + 132), static_cast<int>(py + 132), 3, gold);
             box({px + 132, py + 140, 3, 10}, {18, 24, 33, 255});
         }
-    if (sim.mission.active) {
-        auto route = city.route(sim.playerPosition(), sim.mission.target);
+    if (auto destination = navigationTarget(sim, view)) {
+        auto route = city.route(sim.playerPosition(), *destination);
         for (std::size_t i = 1; i < route.size(); ++i) {
             Vec2 a = city.node(route[i - 1]), b = city.node(route[i]);
             line(a, b, 3, alpha(cyan, 0.25f));
@@ -291,6 +303,11 @@ void Presentation::drawCity(const Simulation& sim, Rect visible) {
             text(service.name, p.x - 45, p.y - 43, 12, c);
             text("[ F ]", p.x - 15, p.y + 23, 12, paper);
         }
+    }
+    if (!sim.mission.active && view.waypointSet) {
+        glow(view.waypoint, 55, cyan);
+        diamond(view.waypoint, 16, cyan);
+        text("WAYPOINT", view.waypoint.x - 30, view.waypoint.y - 40, 12, cyan);
     }
     if (sim.mission.active) {
         Vec2 p = sim.mission.target;
@@ -407,10 +424,10 @@ void Presentation::drawActors(const Simulation& sim, Rect visible) {
         DrawCircleV(rv(p.position), p.size * a, alpha(p.color, a));
     }
 }
-void Presentation::drawMap(const Simulation& sim, bool full) {
+void Presentation::drawMap(const Simulation& sim, const ViewState& view, bool full) {
     float w = static_cast<float>(GetScreenWidth()), h = static_cast<float>(GetScreenHeight());
-    float size = full ? std::min(h - 140, w - 180) : 184;
-    Rect r = full ? Rect{(w - size) / 2, (h - size) / 2, size, size} : Rect{24, h - 224, size, size};
+    Rect r = mapBounds(w, h, full);
+    float size = r.w;
     if (full) {
         box({0, 0, w, h}, {6, 11, 20, 225});
         text("CITY NETWORK / M TO CLOSE", r.x, r.y - 36, 22, cyan);
@@ -439,12 +456,12 @@ void Presentation::drawMap(const Simulation& sim, bool full) {
     for (const auto& v : sim.vehicles)
         if (v.active && v.driver == 1 && v.health > 0)
             DrawCircleV(rv(point(v.position)), full ? 4.0f : 2.5f, pink);
-    if (sim.mission.active) {
-        auto route = sim.city.route(sim.playerPosition(), sim.mission.target);
+    if (auto destination = navigationTarget(sim, view)) {
+        auto route = sim.city.route(sim.playerPosition(), *destination);
         for (std::size_t i = 1; i < route.size(); ++i)
             line(point(sim.city.node(route[i - 1])), point(sim.city.node(route[i])), full ? 3.0f : 1.5f,
                  cyan);
-        diamond(point(sim.mission.target), full ? 10.0f : 5.0f, gold);
+        diamond(point(*destination), full ? 10.0f : 5.0f, sim.mission.active ? gold : cyan);
     }
     Vec2 player = point(sim.playerPosition());
     DrawCircleV(rv(player), full ? 6.0f : 3.5f, paper);
@@ -453,7 +470,8 @@ void Presentation::drawMap(const Simulation& sim, bool full) {
     if (full) {
         text("CYAN contacts     GREEN garages     VIOLET safehouse     RED police", r.x, r.y + size + 16, 14,
              muted);
-        text("Simulation paused while this map is open.", r.x, r.y + size + 38, 14, paper);
+        text("Paused. Click a service / road to route; right-click clears the waypoint.", r.x,
+             r.y + size + 38, 14, paper);
     } else
         text("M / NETWORK", r.x, r.y + size + 10, 12, muted);
 }
@@ -507,11 +525,12 @@ void Presentation::drawHud(const Simulation& sim, const ViewState& view) {
              card.y + 139, 12, gold);
     } else {
         box({w - 334, 24, 310, 92}, panel);
-        text("FREE ROAM / FIND A CONTACT", w - 318, 39, 16, cyan);
+        text(view.waypointSet ? "WAYPOINT ACTIVE / FOLLOW CYAN ROUTE" : "FREE ROAM / FIND A CONTACT",
+             w - 318, 39, 15, cyan);
         text("Cyan diamonds offer paid contracts.", w - 318, 66, 13, muted);
         text("F: interact   M: city map   ESC: pause", w - 318, 88, 12, paper);
     }
-    drawMap(sim, false);
+    drawMap(sim, view, false);
     Rect weapon{w - 234, h - 109, 210, 85};
     box(weapon, panel);
     text("SIDEARM / 9MM", weapon.x + 14, weapon.y + 12, 13, muted);
@@ -544,7 +563,7 @@ void Presentation::drawHud(const Simulation& sim, const ViewState& view) {
         EndScissorMode();
         y -= 37;
     }
-    if (view.showHelp && sim.time < 24) {
+    if (view.showHelp) {
         box({w / 2 - 231, h - 154, 462, 68}, panel);
         text("WASD move / drive   SHIFT sprint   SPACE handbrake", w / 2 - 216, h - 140, 13, paper);
         text("E enter / exit   F interact   LMB shoot   H horn", w / 2 - 216, h - 116, 13, muted);
@@ -558,13 +577,13 @@ void Presentation::drawHud(const Simulation& sim, const ViewState& view) {
         text("1   FULL VEHICLE REPAIR            $150", r.x + 24, r.y + 96, 17, paper);
         text("2   BODY ARMOR                     $250", r.x + 24, r.y + 132, 17, paper);
         text("3   ENGINE " + std::to_string(sim.progress.engineLevel) + " / 3               " +
-                 cash(650 + sim.progress.engineLevel * 350),
+                 (sim.progress.engineLevel >= maxEngineLevel ? "MAXED" : cash(650 + sim.progress.engineLevel * 350)),
              r.x + 24, r.y + 168, 17, paper);
         text("4   64 ROUNDS                      $120", r.x + 24, r.y + 204, 17, paper);
         text("Tuning applies to every vehicle you drive.", r.x + 24, r.y + 239, 12, gold);
     }
     if (view.map)
-        drawMap(sim, true);
+        drawMap(sim, view, true);
     if (!view.map && !sim.garageOpen) {
         Vector2 mouse = GetMousePosition();
         Color c = sim.player.reloadTimer > 0 ? muted : paper;
@@ -578,6 +597,12 @@ void Presentation::drawHud(const Simulation& sim, const ViewState& view) {
 void Presentation::drawMenu(const Simulation& sim, const ViewState& view) {
     float w = static_cast<float>(GetScreenWidth()), h = static_cast<float>(GetScreenHeight());
     box({0, 0, w, h}, {5, 11, 21, 201});
+    if (!toasts_.empty()) {
+        box({24, 24, w - 48, 36}, panel);
+        BeginScissorMode(36, 24, static_cast<int>(w - 72), 36);
+        text(toasts_.back().text, 36, 34, 14, paper);
+        EndScissorMode();
+    }
     for (int i = 0; i < 10; ++i)
         line({w * 0.52f + static_cast<float>(i * 70), 0}, {w * 0.3f + static_cast<float>(i * 70), h}, 1,
              {36, 80, 90, 25});
@@ -623,19 +648,20 @@ void Presentation::drawMenu(const Simulation& sim, const ViewState& view) {
 }
 void Presentation::render(const Simulation& sim, const ViewState& view, float dt) {
     resize();
-    dt = std::clamp(dt, 0.0f, 0.1f);
-    clock_ += dt;
+    dt = std::isfinite(dt) ? std::clamp(dt, 0.0f, 0.1f) : 0.0f;
+    clock_ = std::fmod(clock_ + dt, 3600.0f);
+    float effectDt = view.screen == Screen::Playing && !view.map ? dt : 0.0f;
     for (auto& p : particles_) {
-        p.life -= dt;
-        p.position += p.velocity * dt;
-        p.velocity *= std::exp(-3 * dt);
+        p.life -= effectDt;
+        p.position += p.velocity * effectDt;
+        p.velocity *= std::exp(-3 * effectDt);
     }
     std::erase_if(particles_, [](const Particle& p) { return p.life <= 0; });
     for (auto& mark : skids_)
-        mark.life -= dt;
+        mark.life -= effectDt;
     std::erase_if(skids_, [](const SkidMark& mark) { return mark.life <= 0; });
     for (auto& t : toasts_)
-        t.life -= dt;
+        t.life -= effectDt;
     std::erase_if(toasts_, [](const Toast& t) { return t.life <= 0; });
     float w = static_cast<float>(GetScreenWidth()), h = static_cast<float>(GetScreenHeight());
     Vec2 target = sim.playerPosition();
@@ -667,7 +693,7 @@ void Presentation::render(const Simulation& sim, const ViewState& view, float dt
     BeginTextureMode(scene_);
     ClearBackground(ink);
     BeginMode2D(camera_);
-    drawCity(sim, visible);
+    drawCity(sim, view, visible);
     for (const auto& mark : skids_)
         line(mark.a, mark.b, 3, alpha(ink, std::min(0.65f, mark.life / 5)));
     drawActors(sim, visible);
@@ -686,9 +712,9 @@ void Presentation::render(const Simulation& sim, const ViewState& view, float dt
     SetShaderValue(post_, strengthLocation_, &strength, SHADER_UNIFORM_FLOAT);
     BeginDrawing();
     ClearBackground(ink);
-    BeginShaderMode(post_);
+    if (shaderReady_) BeginShaderMode(post_);
     DrawTexturePro(scene_.texture, {0, 0, w, -h}, {0, 0, w, h}, {0, 0}, 0, WHITE);
-    EndShaderMode();
+    if (shaderReady_) EndShaderMode();
     if (view.screen == Screen::Playing)
         drawHud(sim, view);
     else

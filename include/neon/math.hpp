@@ -37,9 +37,12 @@ inline float length(Vec2 v) {
 inline float distance(Vec2 a, Vec2 b) {
     return length(a - b);
 }
+inline bool finite(Vec2 v) {
+    return std::isfinite(v.x) && std::isfinite(v.y);
+}
 inline Vec2 normalized(Vec2 v) {
-    float n = length(v);
-    return n > 0.0001f ? v / n : Vec2{};
+    float n = std::hypot(v.x, v.y);
+    return std::isfinite(n) && n > 0.0001f ? v / n : Vec2{};
 }
 inline Vec2 direction(float a) {
     return {std::cos(a), std::sin(a)};
@@ -69,7 +72,9 @@ inline bool circleRect(Vec2 p, float radius, Rect r) {
     Vec2 q{std::clamp(p.x, r.x, r.x + r.w), std::clamp(p.y, r.y, r.y + r.h)};
     return dot(p - q, p - q) < radius * radius;
 }
-inline bool segmentRect(Vec2 a, Vec2 b, Rect r) {
+inline float segmentRectTime(Vec2 a, Vec2 b, Rect r) {
+    if (!finite(a) || !finite(b))
+        return std::numeric_limits<float>::infinity();
     float lo = 0.0f, hi = 1.0f;
     Vec2 d = b - a;
     const float starts[]{a.x, a.y}, deltas[]{d.x, d.y};
@@ -77,7 +82,7 @@ inline bool segmentRect(Vec2 a, Vec2 b, Rect r) {
     for (int i = 0; i < 2; ++i) {
         if (std::abs(deltas[i]) < 0.00001f) {
             if (starts[i] < mins[i] || starts[i] > maxs[i])
-                return false;
+                return std::numeric_limits<float>::infinity();
         } else {
             float p = (mins[i] - starts[i]) / deltas[i], q = (maxs[i] - starts[i]) / deltas[i];
             if (p > q)
@@ -85,10 +90,25 @@ inline bool segmentRect(Vec2 a, Vec2 b, Rect r) {
             lo = std::max(lo, p);
             hi = std::min(hi, q);
             if (lo > hi)
-                return false;
+                return std::numeric_limits<float>::infinity();
         }
     }
-    return true;
+    return lo;
+}
+inline bool segmentRect(Vec2 a, Vec2 b, Rect r) {
+    return std::isfinite(segmentRectTime(a, b, r));
+}
+inline float segmentCircleTime(Vec2 a, Vec2 b, Vec2 center, float radius) {
+    Vec2 offset = a - center, delta = b - a;
+    float c = dot(offset, offset) - radius * radius;
+    if (c <= 0)
+        return 0;
+    float aa = dot(delta, delta), bb = dot(offset, delta);
+    float discriminant = bb * bb - aa * c;
+    if (aa <= 0 || discriminant < 0)
+        return std::numeric_limits<float>::infinity();
+    float t = (-bb - std::sqrt(discriminant)) / aa;
+    return t >= 0 && t <= 1 ? t : std::numeric_limits<float>::infinity();
 }
 class Rng {
     std::uint64_t state_;
@@ -102,7 +122,13 @@ class Rng {
         return static_cast<std::uint32_t>((state_ * 2685821657736338717ULL) >> 32);
     }
     int integer(int lo, int hi) {
-        return lo + static_cast<int>(next() % static_cast<std::uint32_t>(hi - lo + 1));
+        if (lo > hi) std::swap(lo, hi);
+        const std::uint64_t span = static_cast<std::uint64_t>(static_cast<std::int64_t>(hi) - lo) + 1;
+        constexpr std::uint64_t domain = std::uint64_t{1} << 32;
+        const std::uint64_t limit = domain - domain % span;
+        std::uint64_t value;
+        do { value = next(); } while (value >= limit);
+        return static_cast<int>(static_cast<std::int64_t>(lo) + static_cast<std::int64_t>(value % span));
     }
     float unit() { return static_cast<float>(next() >> 8) / 16777216.0f; }
     float range(float lo, float hi) { return lerp(lo, hi, unit()); }

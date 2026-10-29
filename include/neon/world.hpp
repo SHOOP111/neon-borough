@@ -47,6 +47,7 @@ class City {
     explicit City(std::uint64_t seedValue = 2025);
     bool isStreet(Vec2 p) const;
     bool blocked(Vec2 p, float radius = 0) const;
+    float obstruction(Vec2 a, Vec2 b) const;
     bool lineOfSight(Vec2 a, Vec2 b) const;
     Vec2 moveCircle(Vec2 p, Vec2 delta, float radius, bool* collided = nullptr) const;
     Vec2 node(int index) const;

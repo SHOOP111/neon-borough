@@ -1,4 +1,5 @@
 #pragma once
+#include "neon/progress.hpp"
 #include "neon/world.hpp"
 #include <string>
 #include <vector>
@@ -12,7 +13,7 @@ struct Vehicle {
     Vec2 position{}, velocity{};
     float heading{}, health{100}, aiTimer{}, fireTimer{}, stuckTimer{};
     int color{}, nodeFrom{}, nodeTo{}, driver{-1}; // -1 traffic, 0 player, 1 police, 2 parked
-    bool active{true};
+    bool active{true}, retired{};
     float topSpeed() const;
 };
 struct Pedestrian {
@@ -24,6 +25,7 @@ struct Bullet {
     Vec2 position{}, previous{}, velocity{};
     float life{1.2f};
     bool hostile{};
+    int sourceVehicle{-1};
 };
 enum class EventKind { Notice, Shot, Impact, Explosion, Reward, Siren, Skid };
 struct Event {
@@ -47,11 +49,6 @@ struct Mission {
     int reward{};
     std::string title, objective;
 };
-struct Progress {
-    std::uint64_t seed{2025};
-    int cash{750}, completed{}, bestChain{}, engineLevel{}, armorLevel{};
-    std::array<int, 3> reputation{};
-};
 struct Input {
     Vec2 movement{}, aim{};
     float throttle{}, steering{};
@@ -73,7 +70,10 @@ class Simulation {
     void purchase(int choice);
     void defeat();
     void drive(Vehicle& car, float throttle, float steer, bool handbrake, float dt);
-    void addBullet(Vec2 position, Vec2 direction, bool hostile);
+    bool nearGarage() const;
+    void wreckVehicles();
+    void retireMissionTarget();
+    void addBullet(Vec2 position, Vec2 direction, bool hostile, int sourceVehicle = -1);
     Vec2 deliveryPoint();
     void notice(std::string text);
 
@@ -91,7 +91,7 @@ class Simulation {
     bool garageOpen{};
     explicit Simulation(std::uint64_t seed = 2025);
     void tick(const Input& input, float dt = fixedStep);
-    void applyProgress(const Progress& value);
+    bool applyProgress(const Progress& value);
     Progress snapshot() const;
     Vehicle* vehicle(int id);
     const Vehicle* vehicle(int id) const;
