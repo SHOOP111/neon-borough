@@ -33,7 +33,8 @@ using Test = std::pair<std::string, std::function<void()>>;
 } // namespace
 int main() {
     tempRoot = std::filesystem::temp_directory_path() /
-               ("neon-borough-core-tests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+               ("neon-borough-core-tests-" +
+                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::create_directories(tempRoot);
     std::vector<Test> tests{
         {"math: zero and unit normalization",

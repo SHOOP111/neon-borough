@@ -47,8 +47,8 @@ bool City::isStreet(Vec2 p) const {
            std::fmod(p.y, static_cast<float>(blockSize)) < streetWidth;
 }
 bool City::blocked(Vec2 p, float radius) const {
-    if (!finite(p) || !std::isfinite(radius) || radius < 0 ||
-        p.x < radius || p.y < radius || p.x > citySize - radius || p.y > citySize - radius)
+    if (!finite(p) || !std::isfinite(radius) || radius < 0 || p.x < radius || p.y < radius ||
+        p.x > citySize - radius || p.y > citySize - radius)
         return true;
     for (const auto& b : buildings)
         if (circleRect(p, radius + 0.01f, b.bounds))
@@ -64,10 +64,14 @@ float City::obstruction(Vec2 a, Vec2 b) const {
     if (!Rect{0, 0, citySize, citySize}.contains(a))
         return 0;
     Vec2 delta = b - a;
-    if (b.x < 0) first = std::min(first, -a.x / delta.x);
-    if (b.y < 0) first = std::min(first, -a.y / delta.y);
-    if (b.x > citySize) first = std::min(first, (citySize - a.x) / delta.x);
-    if (b.y > citySize) first = std::min(first, (citySize - a.y) / delta.y);
+    if (b.x < 0)
+        first = std::min(first, -a.x / delta.x);
+    if (b.y < 0)
+        first = std::min(first, -a.y / delta.y);
+    if (b.x > citySize)
+        first = std::min(first, (citySize - a.x) / delta.x);
+    if (b.y > citySize)
+        first = std::min(first, (citySize - a.y) / delta.y);
     return first;
 }
 bool City::lineOfSight(Vec2 a, Vec2 b) const {
@@ -76,7 +80,8 @@ bool City::lineOfSight(Vec2 a, Vec2 b) const {
 Vec2 City::moveCircle(Vec2 p, Vec2 delta, float radius, bool* collided) const {
     if (!finite(p) || !finite(delta) || !std::isfinite(radius) || radius < 0 ||
         length(delta) > citySize * 2) {
-        if (collided) *collided = true;
+        if (collided)
+            *collided = true;
         return p;
     }
     int steps = std::max(1, static_cast<int>(std::ceil(length(delta) / 6.0f)));

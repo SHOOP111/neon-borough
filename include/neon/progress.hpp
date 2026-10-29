@@ -13,9 +13,9 @@ struct Progress {
     std::array<int, 3> reputation{};
 };
 inline bool validProgress(const Progress& p) {
-    if (p.cash < 0 || p.cash > maxCash || p.completed < 0 || p.completed > maxCompleted ||
-        p.bestChain < 0 || p.bestChain > p.completed || p.engineLevel < 0 ||
-        p.engineLevel > maxEngineLevel || p.armorLevel < 0 || p.armorLevel > 1)
+    if (p.cash < 0 || p.cash > maxCash || p.completed < 0 || p.completed > maxCompleted || p.bestChain < 0 ||
+        p.bestChain > p.completed || p.engineLevel < 0 || p.engineLevel > maxEngineLevel ||
+        p.armorLevel < 0 || p.armorLevel > 1)
         return false;
     int total = 0;
     for (int rep : p.reputation) {

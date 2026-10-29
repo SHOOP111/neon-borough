@@ -104,8 +104,10 @@ Rect mapBounds(float width, float height, bool full) {
                 : Rect{24, height - 224, size, size};
 }
 std::optional<Vec2> navigationTarget(const Simulation& sim, const ViewState& view) {
-    if (sim.mission.active) return sim.mission.target;
-    if (view.waypointSet) return view.waypoint;
+    if (sim.mission.active)
+        return sim.mission.target;
+    if (view.waypointSet)
+        return view.waypoint;
     return std::nullopt;
 }
 Presentation::Presentation() {
@@ -115,8 +117,8 @@ Presentation::Presentation() {
     resolutionLocation_ = GetShaderLocation(post_, "resolution");
     timeLocation_ = GetShaderLocation(post_, "clock");
     strengthLocation_ = GetShaderLocation(post_, "strength");
-    shaderReady_ = IsShaderValid(post_) && resolutionLocation_ >= 0 && timeLocation_ >= 0 &&
-                   strengthLocation_ >= 0;
+    shaderReady_ =
+        IsShaderValid(post_) && resolutionLocation_ >= 0 && timeLocation_ >= 0 && strengthLocation_ >= 0;
     resize();
     particles_.reserve(1600);
 }
@@ -525,8 +527,8 @@ void Presentation::drawHud(const Simulation& sim, const ViewState& view) {
              card.y + 139, 12, gold);
     } else {
         box({w - 334, 24, 310, 92}, panel);
-        text(view.waypointSet ? "WAYPOINT ACTIVE / FOLLOW CYAN ROUTE" : "FREE ROAM / FIND A CONTACT",
-             w - 318, 39, 15, cyan);
+        text(view.waypointSet ? "WAYPOINT ACTIVE / FOLLOW CYAN ROUTE" : "FREE ROAM / FIND A CONTACT", w - 318,
+             39, 15, cyan);
         text("Cyan diamonds offer paid contracts.", w - 318, 66, 13, muted);
         text("F: interact   M: city map   ESC: pause", w - 318, 88, 12, paper);
     }
@@ -577,7 +579,8 @@ void Presentation::drawHud(const Simulation& sim, const ViewState& view) {
         text("1   FULL VEHICLE REPAIR            $150", r.x + 24, r.y + 96, 17, paper);
         text("2   BODY ARMOR                     $250", r.x + 24, r.y + 132, 17, paper);
         text("3   ENGINE " + std::to_string(sim.progress.engineLevel) + " / 3               " +
-                 (sim.progress.engineLevel >= maxEngineLevel ? "MAXED" : cash(650 + sim.progress.engineLevel * 350)),
+                 (sim.progress.engineLevel >= maxEngineLevel ? "MAXED"
+                                                             : cash(650 + sim.progress.engineLevel * 350)),
              r.x + 24, r.y + 168, 17, paper);
         text("4   64 ROUNDS                      $120", r.x + 24, r.y + 204, 17, paper);
         text("Tuning applies to every vehicle you drive.", r.x + 24, r.y + 239, 12, gold);
@@ -712,9 +715,11 @@ void Presentation::render(const Simulation& sim, const ViewState& view, float dt
     SetShaderValue(post_, strengthLocation_, &strength, SHADER_UNIFORM_FLOAT);
     BeginDrawing();
     ClearBackground(ink);
-    if (shaderReady_) BeginShaderMode(post_);
+    if (shaderReady_)
+        BeginShaderMode(post_);
     DrawTexturePro(scene_.texture, {0, 0, w, -h}, {0, 0, w, h}, {0, 0}, 0, WHITE);
-    if (shaderReady_) EndShaderMode();
+    if (shaderReady_)
+        EndShaderMode();
     if (view.screen == Screen::Playing)
         drawHud(sim, view);
     else

@@ -122,12 +122,15 @@ class Rng {
         return static_cast<std::uint32_t>((state_ * 2685821657736338717ULL) >> 32);
     }
     int integer(int lo, int hi) {
-        if (lo > hi) std::swap(lo, hi);
+        if (lo > hi)
+            std::swap(lo, hi);
         const std::uint64_t span = static_cast<std::uint64_t>(static_cast<std::int64_t>(hi) - lo) + 1;
         constexpr std::uint64_t domain = std::uint64_t{1} << 32;
         const std::uint64_t limit = domain - domain % span;
         std::uint64_t value;
-        do { value = next(); } while (value >= limit);
+        do {
+            value = next();
+        } while (value >= limit);
         return static_cast<int>(static_cast<std::int64_t>(lo) + static_cast<std::int64_t>(value % span));
     }
     float unit() { return static_cast<float>(next() >> 8) / 16777216.0f; }

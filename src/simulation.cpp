@@ -156,13 +156,13 @@ void Simulation::tick(const Input& input, float dt) {
         for (int attempt = 0; traffic < 48 && attempt < 64; ++attempt) {
             int n = rng_.integer(0, cityBlocks * cityBlocks - 1);
             auto options = city.neighbors(n);
-            int next = options[static_cast<std::size_t>(rng_.integer(0, static_cast<int>(options.size()) - 1))];
+            int next =
+                options[static_cast<std::size_t>(rng_.integer(0, static_cast<int>(options.size()) - 1))];
             Vec2 dir = normalized(city.node(next) - city.node(n));
             Vec2 pos = city.node(n) + dir * 130 + rightOf(dir) * 22;
             if (distance(pos, playerPosition()) < 700 ||
-                std::any_of(vehicles.begin(), vehicles.end(), [pos](const Vehicle& v) {
-                    return v.active && distance(v.position, pos) < 60;
-                }))
+                std::any_of(vehicles.begin(), vehicles.end(),
+                            [pos](const Vehicle& v) { return v.active && distance(v.position, pos) < 60; }))
                 continue;
             int id = spawnVehicle(pos, static_cast<VehicleKind>(rng_.integer(0, 2)), -1);
             if (auto* car = vehicle(id)) {
@@ -723,8 +723,8 @@ void Simulation::finishMission() {
     int bonus = std::min(chain - 1, 5) * 150;
     int earned = std::min(mission.reward + bonus, maxCash - player.cash);
     player.cash += earned;
-    events.push_back({EventKind::Reward, playerPosition(),
-                      "CONTRACT COMPLETE // +$" + std::to_string(earned), 1});
+    events.push_back(
+        {EventKind::Reward, playerPosition(), "CONTRACT COMPLETE // +$" + std::to_string(earned), 1});
     retireMissionTarget();
     mission.active = false;
     missionCooldown = 3;
@@ -799,8 +799,8 @@ void Simulation::purchase(int choice) {
         notice("Bring a vehicle for repairs.");
         return;
     }
-    if ((choice == 1 && vehicle(player.vehicle)->health >= 100) ||
-        (choice == 2 && player.armor >= 100) || (choice == 4 && player.reserve >= maxReserve)) {
+    if ((choice == 1 && vehicle(player.vehicle)->health >= 100) || (choice == 2 && player.armor >= 100) ||
+        (choice == 4 && player.reserve >= maxReserve)) {
         notice("Already full. No purchase needed.");
         return;
     }
@@ -871,49 +871,106 @@ std::uint64_t Simulation::digest() const {
         h *= 1099511628211ULL;
     };
     auto scalar = [&mix](float v) { mix(std::bit_cast<std::uint32_t>(v)); };
-    auto vector = [&scalar](Vec2 v) { scalar(v.x); scalar(v.y); };
+    auto vector = [&scalar](Vec2 v) {
+        scalar(v.x);
+        scalar(v.y);
+    };
     auto integer = [&mix](int v) { mix(static_cast<std::uint64_t>(v)); };
     auto string = [&mix](const std::string& v) {
         mix(v.size());
-        for (unsigned char c : v) mix(c);
+        for (unsigned char c : v)
+            mix(c);
     };
     mix(city.seed);
     mix(rng_.state());
     integer(nextVehicleId_);
-    scalar(policeTimer_); scalar(populationTimer_); scalar(honkTimer_);
-    scalar(time); scalar(heat); scalar(unseen); scalar(trauma); scalar(missionCooldown);
-    integer(chain); integer(saveRevision); mix(garageOpen);
-    vector(player.position); vector(player.aim);
-    scalar(player.health); scalar(player.armor); scalar(player.stamina);
-    scalar(player.shotTimer); scalar(player.reloadTimer); scalar(player.invulnerable);
-    integer(player.vehicle); integer(player.cash); integer(player.ammo); integer(player.reserve);
-    mix(progress.seed); integer(progress.cash); integer(progress.completed); integer(progress.bestChain);
-    integer(progress.engineLevel); integer(progress.armorLevel);
-    for (int rep : progress.reputation) integer(rep);
-    mix(mission.active); integer(static_cast<int>(mission.kind)); integer(mission.stage);
-    integer(mission.targetVehicle); integer(mission.deliveries); vector(mission.target);
-    scalar(mission.timeLeft); scalar(mission.hold); integer(mission.reward);
-    string(mission.title); string(mission.objective);
+    scalar(policeTimer_);
+    scalar(populationTimer_);
+    scalar(honkTimer_);
+    scalar(time);
+    scalar(heat);
+    scalar(unseen);
+    scalar(trauma);
+    scalar(missionCooldown);
+    integer(chain);
+    integer(saveRevision);
+    mix(garageOpen);
+    vector(player.position);
+    vector(player.aim);
+    scalar(player.health);
+    scalar(player.armor);
+    scalar(player.stamina);
+    scalar(player.shotTimer);
+    scalar(player.reloadTimer);
+    scalar(player.invulnerable);
+    integer(player.vehicle);
+    integer(player.cash);
+    integer(player.ammo);
+    integer(player.reserve);
+    mix(progress.seed);
+    integer(progress.cash);
+    integer(progress.completed);
+    integer(progress.bestChain);
+    integer(progress.engineLevel);
+    integer(progress.armorLevel);
+    for (int rep : progress.reputation)
+        integer(rep);
+    mix(mission.active);
+    integer(static_cast<int>(mission.kind));
+    integer(mission.stage);
+    integer(mission.targetVehicle);
+    integer(mission.deliveries);
+    vector(mission.target);
+    scalar(mission.timeLeft);
+    scalar(mission.hold);
+    integer(mission.reward);
+    string(mission.title);
+    string(mission.objective);
     mix(vehicles.size());
     for (const auto& v : vehicles) {
-        integer(v.id); integer(static_cast<int>(v.kind)); vector(v.position); vector(v.velocity);
-        scalar(v.heading); scalar(v.health); scalar(v.aiTimer); scalar(v.fireTimer); scalar(v.stuckTimer);
-        integer(v.color); integer(v.nodeFrom); integer(v.nodeTo); integer(v.driver);
-        mix(v.active); mix(v.retired);
+        integer(v.id);
+        integer(static_cast<int>(v.kind));
+        vector(v.position);
+        vector(v.velocity);
+        scalar(v.heading);
+        scalar(v.health);
+        scalar(v.aiTimer);
+        scalar(v.fireTimer);
+        scalar(v.stuckTimer);
+        integer(v.color);
+        integer(v.nodeFrom);
+        integer(v.nodeTo);
+        integer(v.driver);
+        mix(v.active);
+        mix(v.retired);
     }
     mix(pedestrians.size());
     for (const auto& p : pedestrians) {
-        vector(p.position); vector(p.target); scalar(p.heading); scalar(p.panic); scalar(p.health);
-        scalar(p.wait); integer(p.color); integer(p.corner); integer(p.nextCorner);
+        vector(p.position);
+        vector(p.target);
+        scalar(p.heading);
+        scalar(p.panic);
+        scalar(p.health);
+        scalar(p.wait);
+        integer(p.color);
+        integer(p.corner);
+        integer(p.nextCorner);
     }
     mix(bullets.size());
     for (const auto& b : bullets) {
-        vector(b.position); vector(b.previous); vector(b.velocity); scalar(b.life);
-        mix(b.hostile); integer(b.sourceVehicle);
+        vector(b.position);
+        vector(b.previous);
+        vector(b.velocity);
+        scalar(b.life);
+        mix(b.hostile);
+        integer(b.sourceVehicle);
     }
     mix(events.size());
     for (const auto& e : events) {
-        integer(static_cast<int>(e.kind)); vector(e.position); string(e.text); scalar(e.value);
+        integer(static_cast<int>(e.kind));
+        vector(e.position);
+        string(e.text);
+        scalar(e.value);
     }
     return h;
 }

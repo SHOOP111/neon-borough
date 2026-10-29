@@ -42,10 +42,10 @@ Audio::Audio() {
         sounds_[static_cast<std::size_t>(i)] = makeSound(i);
     SetAudioStreamBufferSizeDefault(1024);
     music_ = LoadAudioStream(22050, 32, 1);
-    ready_ = IsAudioStreamValid(music_) && std::all_of(sounds_.begin(), sounds_.end(), [](Sound sound) {
-        return IsSoundValid(sound);
-    });
-    if (ready_) PlayAudioStream(music_);
+    ready_ = IsAudioStreamValid(music_) &&
+             std::all_of(sounds_.begin(), sounds_.end(), [](Sound sound) { return IsSoundValid(sound); });
+    if (ready_)
+        PlayAudioStream(music_);
 }
 Audio::~Audio() {
     if (!deviceReady_)
@@ -55,7 +55,8 @@ Audio::~Audio() {
         UnloadAudioStream(music_);
     }
     for (Sound sound : sounds_)
-        if (IsSoundValid(sound)) UnloadSound(sound);
+        if (IsSoundValid(sound))
+            UnloadSound(sound);
     CloseAudioDevice();
 }
 void Audio::ingest(const std::vector<Event>& events) {
@@ -114,7 +115,8 @@ void Audio::update(const Simulation& sim, const ViewState& view, float dt) {
                                 ? 0
                                 : (std::sin(enginePhase_) + 0.3 * std::sin(enginePhase_ * 2)) * 0.12;
             double police = siren && view.screen == Screen::Playing && !view.map
-                                ? std::sin(t * 2 * pi * (680 + 130 * std::sin(t * 2.8))) * 0.055 : 0;
+                                ? std::sin(t * 2 * pi * (680 + 130 * std::sin(t * 2.8))) * 0.055
+                                : 0;
             sample = static_cast<float>(std::clamp(pad + synth + kick + hat + engine + police, -0.8, 0.8));
             musicClock_ += 1 / rate;
         }

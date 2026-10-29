@@ -33,8 +33,8 @@ bool parse(int argc, char** argv, Options& o) {
             o.smokeMute = arg == "--smoke-mute";
         } else if (arg == "--smoke-view") {
             auto v = next();
-            if (v != "gameplay" && v != "title" && v != "map" && v != "garage" &&
-                v != "paused" && v != "settings" && v != "waypoint")
+            if (v != "gameplay" && v != "title" && v != "map" && v != "garage" && v != "paused" &&
+                v != "settings" && v != "waypoint")
                 return false;
             o.smoke = true;
             o.smokeView = v;
@@ -92,9 +92,10 @@ int run(int argc, char** argv) {
         return 2;
     }
     if (options.help) {
-        std::cout << "Neon Borough\n--seed N --no-audio --no-save --save-dir PATH --size WIDTHxHEIGHT\n"
-                     "--smoke --frames N --screenshot PATH (CI-only scripted renderer smoke test)\n"
-                     "--smoke-view gameplay|title|map|garage|paused|settings|waypoint --smoke-audio --smoke-mute\n";
+        std::cout
+            << "Neon Borough\n--seed N --no-audio --no-save --save-dir PATH --size WIDTHxHEIGHT\n"
+               "--smoke --frames N --screenshot PATH (CI-only scripted renderer smoke test)\n"
+               "--smoke-view gameplay|title|map|garage|paused|settings|waypoint --smoke-audio --smoke-mute\n";
         return 0;
     }
     std::optional<neon::Progress> saved;
@@ -267,7 +268,8 @@ int run(int argc, char** argv) {
                                 break;
                             }
                         view.waypointSet = true;
-                        presentation.message(sim->mission.active ? "Waypoint stored. Contract route takes priority." : label);
+                        presentation.message(
+                            sim->mission.active ? "Waypoint stored. Contract route takes priority." : label);
                     }
                 }
                 if (IsKeyPressed(KEY_F1))
@@ -348,8 +350,8 @@ int run(int argc, char** argv) {
                     result = 4;
                 }
                 Image capture = LoadImageFromScreen();
-                bool exported = !ec && IsImageValid(capture) &&
-                                ExportImage(capture, options.screenshot.string().c_str());
+                bool exported =
+                    !ec && IsImageValid(capture) && ExportImage(capture, options.screenshot.string().c_str());
                 UnloadImage(capture);
                 std::cout << "SMOKE frames=" << frame << " digest=" << sim->digest()
                           << " vehicles=" << sim->vehicles.size()
@@ -371,7 +373,8 @@ int main(int argc, char** argv) {
         return run(argc, argv);
     } catch (const std::exception& error) {
         std::cerr << "Neon Borough failed: " << error.what() << '\n';
-        if (IsWindowReady()) CloseWindow();
+        if (IsWindowReady())
+            CloseWindow();
         return 1;
     }
 }

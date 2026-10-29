@@ -63,7 +63,8 @@ SaveResult saveProgress(const std::filesystem::path& path, const Progress& p) {
     body.imbue(std::locale::classic());
     body << "NEON_BOROUGH 1\n"
          << p.seed << ' ' << p.cash << ' ' << p.completed << ' ' << p.bestChain << ' ' << p.engineLevel << ' '
-         << p.armorLevel << ' ' << p.reputation[0] << ' ' << p.reputation[1] << ' ' << p.reputation[2] << '\n';
+         << p.armorLevel << ' ' << p.reputation[0] << ' ' << p.reputation[1] << ' ' << p.reputation[2]
+         << '\n';
     std::string data = body.str();
     {
         std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
@@ -150,7 +151,8 @@ std::optional<Progress> loadProgress(const std::filesystem::path& path, std::str
     in.imbue(std::locale::classic());
     if (!readNumber(in, p.seed) || !readNumber(in, p.cash) || !readNumber(in, p.completed) ||
         !readNumber(in, p.bestChain) || !readNumber(in, p.engineLevel) || !readNumber(in, p.armorLevel) ||
-        !readNumber(in, p.reputation[0]) || !readNumber(in, p.reputation[1]) || !readNumber(in, p.reputation[2]))
+        !readNumber(in, p.reputation[0]) || !readNumber(in, p.reputation[1]) ||
+        !readNumber(in, p.reputation[2]))
         return fail("Malformed progress.");
     in >> std::ws;
     if (!in.eof() || !validProgress(p))
@@ -162,16 +164,19 @@ std::optional<Progress> loadProgress(const std::filesystem::path& path, std::str
 std::optional<Progress> recoverProgress(const std::filesystem::path& path, std::string* error) {
     std::string primaryError;
     if (auto p = loadProgress(path, &primaryError)) {
-        if (error) error->clear();
+        if (error)
+            error->clear();
         return p;
     }
     auto backup = path;
     backup += ".bak";
     if (auto p = loadProgress(backup)) {
-        if (error) *error = "Recovered the previous save backup.";
+        if (error)
+            *error = "Recovered the previous save backup.";
         return p;
     }
-    if (error) *error = primaryError;
+    if (error)
+        *error = primaryError;
     return std::nullopt;
 }
 std::filesystem::path defaultSavePath() {
@@ -182,15 +187,19 @@ std::filesystem::path defaultSavePath() {
     };
 #ifdef _WIN32
     auto root = environmentPath("LOCALAPPDATA");
-    if (!root.empty()) return root / "NeonBorough" / "progress.sav";
+    if (!root.empty())
+        return root / "NeonBorough" / "progress.sav";
 #elif defined(__APPLE__)
     auto root = environmentPath("HOME");
-    if (!root.empty()) return root / "Library" / "Application Support" / "NeonBorough" / "progress.sav";
+    if (!root.empty())
+        return root / "Library" / "Application Support" / "NeonBorough" / "progress.sav";
 #else
     auto root = environmentPath("XDG_DATA_HOME");
-    if (!root.empty()) return root / "neon-borough" / "progress.sav";
+    if (!root.empty())
+        return root / "neon-borough" / "progress.sav";
     root = environmentPath("HOME");
-    if (!root.empty()) return root / ".local" / "share" / "neon-borough" / "progress.sav";
+    if (!root.empty())
+        return root / ".local" / "share" / "neon-borough" / "progress.sav";
 #endif
     return std::filesystem::path("neon-borough-progress.sav");
 }
